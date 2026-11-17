@@ -1,0 +1,39 @@
+/* 专体 PERSON SPORTS · 设计令牌 */
+/* 品牌框架色来自 PRD §9.2（深蓝科技风），强调色采用《年轻配色》视觉稿方向（已确认融合方案） */
+:root {
+  /* 品牌与交互 */
+  --brand: #12345b;
+  --brand-2: #0e2a49;
+  --blue: #2872b8;
+  --blue-strong: #2b5bff;
+
+  /* 底色与文字 */
+  --bg: #f3f6fa;
+  --card: #ffffff;
+  --ink: #1b2a3d;
+  --ink-2: #5a6b80;
+  --ink-3: #8b98a9;
+  --line: #e6ebf2;
+
+  /* 年轻配色强调色（视觉稿方向） */
+  --lime: #c9f43f;
+  --lime-ink: #3d4a00;
+  --coral: #ff6b5e;
+  --teal: #19b9ac;
+  --purple: #8b5cf6;
+  --orange: #ff9850;
+  --sky: #2b7fff;
+  --green: #22c55e;
+  --pink: #ec4899;
+  --indigo: #6366f1;
+  --red: #ef4444;
+  --amber: #d97706;
+
+  /* 尺寸 */
+  --radius: 16px;
+  --radius-s: 10px;
+  --shadow: 0 6px 18px rgba(18, 52, 91, 0.08);
+  --shadow-lg: 0 10px 30px rgba(18, 52, 91, 0.14);
+  --maxw: 430px;
+  --nav-h: 62px;
+}

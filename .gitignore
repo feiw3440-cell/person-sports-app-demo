@@ -1,0 +1,21 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+
+# 本地环境与密钥（仅允许示例模板）
+.env
+.env.*
+!.env.example
+
+# 日志与系统临时文件
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# 编辑器
+.idea/
+.vscode/
+*.swp
