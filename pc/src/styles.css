@@ -1,0 +1,33 @@
+/* 专体 PC 工作台 · 全局样式（品牌体系与 APP tokens.css 同源） */
+:root {
+  --brand: #12345b;
+  --blue: #2872b8;
+  --bg: #f3f6fa;
+  --ink: #1b2a3d;
+  --ink-2: #5a6b80;
+  --line: #e6ebf2;
+}
+
+html, body, #root { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+
+* { box-sizing: border-box; }
+
+.pc-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: 0.5px; }
+.pc-brand .logo {
+  width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(135deg, #12345b, #2872b8);
+  color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;
+}
+.pc-brand .en { color: var(--blue); font-size: 12px; font-weight: 600; letter-spacing: 1.2px; }
+
+.workbench-card-num { font-size: 28px; font-weight: 700; color: var(--brand); }
+.workbench-note { color: var(--ink-2); font-size: 12px; }
+
+.demo-strip {
+  background: #fff7e6; border: 1px solid #ffe0b3; border-radius: 8px;
+  padding: 8px 14px; font-size: 13px; color: #874d00; margin-bottom: 16px;
+}
+
+.responsive-grid { display: grid; gap: 16px; grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1366px) { .responsive-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1600px) { .responsive-grid.wide-6 { grid-template-columns: repeat(6, 1fr); } }
