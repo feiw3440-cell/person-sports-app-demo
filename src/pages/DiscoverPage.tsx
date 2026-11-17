@@ -255,7 +255,7 @@ export default function DiscoverPage() {
               </button>
             </div>
             <button className="banner-img" style={{ width: '100%' }} onClick={() => nav('/event/e1')} aria-label="全国青少年体育锦标赛 立即报名">
-              <img src="/img/disc_event.jpg?v=3" alt="全国青少年体育锦标赛" />
+              <img src="img/disc_event.jpg?v=3" alt="全国青少年体育锦标赛" />
             </button>
           </>
         )}

@@ -43,7 +43,7 @@ export default function ProfilePage() {
     <>
       {/* 个人资料区 */}
       <div className="me2-header">
-        <img className="bgimg" src="/img/me_header.jpg" alt="" aria-hidden />
+        <img className="bgimg" src="img/me_header.jpg" alt="" aria-hidden />
         <div className="row1">
           <BrandLogo light small />
           <div className="r">
@@ -57,7 +57,7 @@ export default function ProfilePage() {
           </div>
         </div>
         <div className="me2-id">
-          <img className="me2-avatar" src="/img/me_avatar.jpg" alt="头像" />
+          <img className="me2-avatar" src="img/me_avatar.jpg" alt="头像" />
           <div>
             <div className="me2-name">
               体育追梦人
@@ -188,7 +188,7 @@ export default function ProfilePage() {
 
         {/* 赛事宣传入口 */}
         <button className="me2-banner" onClick={() => nav('/list/events')} aria-label="专体全国体育赛事 立即报名">
-          <img src="/img/me_event.jpg?v=2" alt="专体全国体育赛事" />
+          <img src="img/me_event.jpg?v=2" alt="专体全国体育赛事" />
         </button>
 
         <MockFooter text="个人数据与身份状态均为演示模拟数据" />

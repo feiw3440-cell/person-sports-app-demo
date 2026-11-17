@@ -69,7 +69,7 @@ export const USERS: User[] = [
     region: '上海',
     title: '演示账号',
     bio: '这是专体的演示账号，用于展示多身份切换、师徒授权等交互原型。',
-    photo: '/img/me_avatar.jpg',
+    photo: 'img/me_avatar.jpg',
     followers: 328,
   },
   {
@@ -290,17 +290,17 @@ export const USERS: User[] = [
   { id: 's1', name: '小李', color: '#00897B', kind: 'student', roles: ['student'], verify: 'pending', region: '上海', title: '学员（演示）' },
   { id: 's2', name: '小周', color: '#7E57C2', kind: 'student', roles: ['student'], verify: 'pending', region: '上海', title: '学员（演示）' },
   // —— 高保真原型新增演示人物（头像取自原型图裁切） ——
-  { id: 'nw1', name: '张伟', color: '#0D48C0', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '北京', title: '摔跤运动员 · 国家队', photo: '/img/top_av_1.jpg', followers: 236000, achievements: [{ name: '世界摔跤锦标赛洲际冠军（模拟）', date: '2025-09', unverified: false }] },
-  { id: 'nw2', name: '李明阳', color: '#2E6BE6', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '北京', title: '摔跤运动员 · 国家队', photo: '/img/top_av_2.jpg', followers: 158000, achievements: [{ name: '全国摔跤锦标赛冠军（模拟）', date: '2025-05', unverified: false }] },
-  { id: 'nw3', name: '王芳', color: '#E65100', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '上海', title: '游泳运动员 · 国家队', photo: '/img/top_av_3.jpg', followers: 142000, achievements: [{ name: '全国游泳冠军赛金牌（模拟）', date: '2025-04', unverified: false }] },
-  { id: 'nw4', name: '李娜', color: '#1565C0', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '上海', title: '游泳运动员 · 自由泳', photo: '/img/disc_m2.jpg', followers: 96000 },
-  { id: 'nw5', name: '王强', color: '#E65100', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '成都', title: '篮球运动员 · 后卫', photo: '/img/disc_m1.jpg', followers: 88000 },
-  { id: 'nm1', name: '刘教练', color: '#12345B', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '北京', title: '摔跤导师', photo: '/img/top_m1.jpg', followers: 62000, mentorInfo: { level: '高级导师（占位名称·规则待确认）', since: '2016', system: '摔跤力量与技巧融合训练体系（演示）', philosophy: '力量是基础，技巧是艺术。', studentCount: 52 } },
-  { id: 'nm2', name: '陈教练', color: '#1565C0', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '上海', title: '游泳导师', photo: '/img/top_m2.jpg', followers: 48000, mentorInfo: { level: '认证导师（占位名称·规则待确认）', since: '2019', system: '竞技游泳技术优化课程（演示）', philosophy: '水感优先，效率致胜。', studentCount: 40 } },
-  { id: 'nm3', name: '赵教练', color: '#7C4DFF', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '北京', title: '田径导师', photo: '/img/top_m3.jpg', followers: 39000, mentorInfo: { level: '认证导师（占位名称·规则待确认）', since: '2020', system: '短跑爆发力与节奏训练（演示）', philosophy: '每一步都在靠近终点。', studentCount: 28 } },
-  { id: 'nm4', name: '王教练', color: '#2872B8', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '北京', title: '摔跤专项教练', photo: '/img/disc_m1.jpg', followers: 28000, mentorInfo: { level: '认证导师（占位名称·规则待确认）', since: '2021', system: '摔跤专项体能与技术课程（演示）', philosophy: '垫上每一秒都算数。', studentCount: 22 } },
-  { id: 'nm5', name: '李导师', color: '#0E7C72', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '青岛', title: '柔道教学专家', photo: '/img/disc_m2.jpg', followers: 31000, mentorInfo: { level: '认证导师（占位名称·规则待确认）', since: '2018', system: '柔道教学专家课程体系（演示）', philosophy: '以柔克刚，礼始礼终。', studentCount: 35 } },
-  { id: 'nm6', name: '张教练', color: '#1565C0', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '上海', title: '游泳训练专家', photo: '/img/disc_m3.jpg', followers: 26000, mentorInfo: { level: '高级导师（占位名称·规则待确认）', since: '2017', system: '游泳训练专家四泳姿进阶（演示）', philosophy: '先会水，再谈快。', studentCount: 45 } },
+  { id: 'nw1', name: '张伟', color: '#0D48C0', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '北京', title: '摔跤运动员 · 国家队', photo: 'img/top_av_1.jpg', followers: 236000, achievements: [{ name: '世界摔跤锦标赛洲际冠军（模拟）', date: '2025-09', unverified: false }] },
+  { id: 'nw2', name: '李明阳', color: '#2E6BE6', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '北京', title: '摔跤运动员 · 国家队', photo: 'img/top_av_2.jpg', followers: 158000, achievements: [{ name: '全国摔跤锦标赛冠军（模拟）', date: '2025-05', unverified: false }] },
+  { id: 'nw3', name: '王芳', color: '#E65100', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '上海', title: '游泳运动员 · 国家队', photo: 'img/top_av_3.jpg', followers: 142000, achievements: [{ name: '全国游泳冠军赛金牌（模拟）', date: '2025-04', unverified: false }] },
+  { id: 'nw4', name: '李娜', color: '#1565C0', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '上海', title: '游泳运动员 · 自由泳', photo: 'img/disc_m2.jpg', followers: 96000 },
+  { id: 'nw5', name: '王强', color: '#E65100', kind: 'athlete', roles: ['athlete'], verify: 'verified', region: '成都', title: '篮球运动员 · 后卫', photo: 'img/disc_m1.jpg', followers: 88000 },
+  { id: 'nm1', name: '刘教练', color: '#12345B', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '北京', title: '摔跤导师', photo: 'img/top_m1.jpg', followers: 62000, mentorInfo: { level: '高级导师（占位名称·规则待确认）', since: '2016', system: '摔跤力量与技巧融合训练体系（演示）', philosophy: '力量是基础，技巧是艺术。', studentCount: 52 } },
+  { id: 'nm2', name: '陈教练', color: '#1565C0', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '上海', title: '游泳导师', photo: 'img/top_m2.jpg', followers: 48000, mentorInfo: { level: '认证导师（占位名称·规则待确认）', since: '2019', system: '竞技游泳技术优化课程（演示）', philosophy: '水感优先，效率致胜。', studentCount: 40 } },
+  { id: 'nm3', name: '赵教练', color: '#7C4DFF', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '北京', title: '田径导师', photo: 'img/top_m3.jpg', followers: 39000, mentorInfo: { level: '认证导师（占位名称·规则待确认）', since: '2020', system: '短跑爆发力与节奏训练（演示）', philosophy: '每一步都在靠近终点。', studentCount: 28 } },
+  { id: 'nm4', name: '王教练', color: '#2872B8', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '北京', title: '摔跤专项教练', photo: 'img/disc_m1.jpg', followers: 28000, mentorInfo: { level: '认证导师（占位名称·规则待确认）', since: '2021', system: '摔跤专项体能与技术课程（演示）', philosophy: '垫上每一秒都算数。', studentCount: 22 } },
+  { id: 'nm5', name: '李导师', color: '#0E7C72', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '青岛', title: '柔道教学专家', photo: 'img/disc_m2.jpg', followers: 31000, mentorInfo: { level: '认证导师（占位名称·规则待确认）', since: '2018', system: '柔道教学专家课程体系（演示）', philosophy: '以柔克刚，礼始礼终。', studentCount: 35 } },
+  { id: 'nm6', name: '张教练', color: '#1565C0', kind: 'mentor', roles: ['coach', 'mentor'], verify: 'verified', region: '上海', title: '游泳训练专家', photo: 'img/disc_m3.jpg', followers: 26000, mentorInfo: { level: '高级导师（占位名称·规则待确认）', since: '2017', system: '游泳训练专家四泳姿进阶（演示）', philosophy: '先会水，再谈快。', studentCount: 45 } },
   { id: 'acc1', name: '专体官方', color: '#0765FE', kind: 'account', roles: [], verify: 'verified', region: '北京', title: '专体官方账号' },
   { id: 'acc2', name: '国家柔道队', color: '#0D48C0', kind: 'account', roles: [], verify: 'verified', region: '北京', title: '国家队官方账号' },
   { id: 'acc3', name: '游泳训练营', color: '#19B9AC', kind: 'account', roles: [], verify: 'verified', region: '上海', title: '训练机构账号' },
@@ -391,10 +391,10 @@ export const CONTENTS: ContentItem[] = [
   { id: 'c12', type: 'article', title: '攀岩安全入门：保护与沟通口令', colorA: '#EC4899', colorB: '#F43F5E', projectId: 'p8', authorId: 'a7', publishAt: '2026-10-06', summary: '攀登前的保护检查与"起飞/收紧"口令，安全永远第一。', metrics: m(76, 62, 41000, 5600, 2100, 380, 0) },
   { id: 'c13', type: 'video', title: '羽毛球步法练习：米字步详解', colorA: '#22C55E', colorB: '#84CC16', projectId: 'p6', authorId: 'a8', publishAt: '2026-10-03', duration: '07:45', summary: '何雨薇示范羽毛球基础米字步与重心还原。', metrics: m(80, 72, 88000, 11400, 4200, 690, 0) },
   // —— 发现页瀑布流（高保真原型内容，封面取自原型图裁切） ——
-  { id: 'd1', type: 'video', title: '摔跤：力量与技巧的完美结合', colorA: '#0D48C0', colorB: '#22518F', projectId: 'p1', authorId: 'acc1', publishAt: '2026-11-12', duration: '05:30', summary: '摔跤是力量与技巧的完美结合，走近国家队的训练日常。', photo: '/img/disc_wrestle.jpg?v=2', hot: true, cats: ['奥运项目', '格斗对抗'], metrics: m(92, 90, 1285000, 126000, 38000, 8200, 0) },
-  { id: 'd2', type: 'video', title: '柔道：以柔克刚的智慧', colorA: '#1565C0', colorB: '#0E7C72', projectId: 'p2', authorId: 'acc2', publishAt: '2026-11-10', duration: '06:12', summary: '柔道的智慧：不与对手拼力，而是借力打力。', photo: '/img/disc_judo.jpg?v=2', cats: ['奥运项目', '格斗对抗'], metrics: m(88, 82, 862000, 83000, 26000, 5400, 0) },
-  { id: 'd3', type: 'video', title: '游泳：速度与耐力的较量', colorA: '#2B7FFF', colorB: '#1565C0', projectId: 'p4', authorId: 'acc3', publishAt: '2026-11-08', duration: '04:48', summary: '速度与耐力的较量，自由泳的技术细节全解析。', photo: '/img/disc_swim.jpg?v=2', cats: ['奥运项目', '水上运动'], metrics: m(85, 78, 648000, 67000, 21000, 4100, 0) },
-  { id: 'd4', type: 'video', title: '田径：突破极限，挑战自我', colorA: '#7C4DFF', colorB: '#E65100', projectId: 'p3', authorId: 'acc4', publishAt: '2026-11-06', duration: '05:05', summary: '每一次冲刺都是对自我的突破，田径的魅力就在于此。', photo: '/img/disc_track.jpg?v=2', cats: ['奥运项目', '田径类'], metrics: m(84, 76, 523000, 59000, 18000, 3600, 0) },
+  { id: 'd1', type: 'video', title: '摔跤：力量与技巧的完美结合', colorA: '#0D48C0', colorB: '#22518F', projectId: 'p1', authorId: 'acc1', publishAt: '2026-11-12', duration: '05:30', summary: '摔跤是力量与技巧的完美结合，走近国家队的训练日常。', photo: 'img/disc_wrestle.jpg?v=2', hot: true, cats: ['奥运项目', '格斗对抗'], metrics: m(92, 90, 1285000, 126000, 38000, 8200, 0) },
+  { id: 'd2', type: 'video', title: '柔道：以柔克刚的智慧', colorA: '#1565C0', colorB: '#0E7C72', projectId: 'p2', authorId: 'acc2', publishAt: '2026-11-10', duration: '06:12', summary: '柔道的智慧：不与对手拼力，而是借力打力。', photo: 'img/disc_judo.jpg?v=2', cats: ['奥运项目', '格斗对抗'], metrics: m(88, 82, 862000, 83000, 26000, 5400, 0) },
+  { id: 'd3', type: 'video', title: '游泳：速度与耐力的较量', colorA: '#2B7FFF', colorB: '#1565C0', projectId: 'p4', authorId: 'acc3', publishAt: '2026-11-08', duration: '04:48', summary: '速度与耐力的较量，自由泳的技术细节全解析。', photo: 'img/disc_swim.jpg?v=2', cats: ['奥运项目', '水上运动'], metrics: m(85, 78, 648000, 67000, 21000, 4100, 0) },
+  { id: 'd4', type: 'video', title: '田径：突破极限，挑战自我', colorA: '#7C4DFF', colorB: '#E65100', projectId: 'p3', authorId: 'acc4', publishAt: '2026-11-06', duration: '05:05', summary: '每一次冲刺都是对自我的突破，田径的魅力就在于此。', photo: 'img/disc_track.jpg?v=2', cats: ['奥运项目', '田径类'], metrics: m(84, 76, 523000, 59000, 18000, 3600, 0) },
 ]
 
 export function contentById(id: string) {
@@ -596,7 +596,7 @@ export const REGIONS = ['上海', '杭州', '南京', '北京', '成都', '广�
 /* ============ 消息（模拟通知，按高保真原型 5 分类 / 12 条） ============ */
 export const MESSAGES: MsgItem[] = [
   { id: 'msg1', cat: 'system', kind: 'system', title: '系统通知', body: '平台将于今晚22:00进行系统维护，预计30分钟…', time: '今天 14:30', unread: true, badge: 3, target: '/messages?cat=system' },
-  { id: 'msg2', cat: 'interact', kind: 'follow', title: '张伟', body: '我关注了你，希望能一起交流摔跤技术！', time: '今天 13:20', unread: true, badge: 1, avatar: '/img/top_av_1.jpg', verified: true, target: '/athlete/nw1' },
+  { id: 'msg2', cat: 'interact', kind: 'follow', title: '张伟', body: '我关注了你，希望能一起交流摔跤技术！', time: '今天 13:20', unread: true, badge: 1, avatar: 'img/top_av_1.jpg', verified: true, target: '/athlete/nw1' },
   { id: 'msg3', cat: 'interact', kind: 'like', title: '点赞消息', body: '李娜 赞了你的动态："训练真的很刻苦！"', time: '昨天 20:15', unread: false, target: '/athlete/nw4' },
   { id: 'msg4', cat: 'interact', kind: 'comment', title: '评论消息', body: '王强 评论了你的视频："技术动作很标准…"', time: '昨天 18:45', unread: true, badge: 2, target: '/athlete/nw5' },
   { id: 'msg5', cat: 'biz', kind: 'course', title: '课程通知', body: '您报名的《摔跤基础训练课程》将于明天开课', time: '昨天 16:30', unread: false, target: '/course/k1' },

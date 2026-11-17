@@ -83,7 +83,7 @@ export default function MessagesPage() {
 
         {/* 体育主题品牌横幅（原型裁切图） */}
         <div className="banner-img" style={{ marginBottom: 12 }}>
-          <img src="/img/msg_banner.jpg" alt="连接体育·传递价值" />
+          <img src="img/msg_banner.jpg" alt="连接体育·传递价值" />
         </div>
 
         {/* 消息列表 */}

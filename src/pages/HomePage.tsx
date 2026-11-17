@@ -24,9 +24,9 @@ const QUICK: { glyph: 'top' | 'video' | 'event' | 'athlete' | 'mentor'; label: s
 ]
 
 const PROJECT_CARDS = [
-  { img: '/img/home_swim.jpg', pid: 'p4' },
-  { img: '/img/home_wrestle.jpg', pid: 'p1' },
-  { img: '/img/home_fence.jpg', pid: 'p7' },
+  { img: 'img/home_swim.jpg', pid: 'p4' },
+  { img: 'img/home_wrestle.jpg', pid: 'p1' },
+  { img: 'img/home_fence.jpg', pid: 'p7' },
 ]
 
 export default function HomePage() {
@@ -64,7 +64,7 @@ export default function HomePage() {
       <div className="page">
         {/* 主视觉 Banner：摔跤竞技场景 */}
         <button className="hero-img" onClick={() => nav('/list/projects')} aria-label="专注体育 连接专业">
-          <img src="/img/home_hero.jpg" alt="专注体育 连接专业" />
+          <img src="img/home_hero.jpg" alt="专注体育 连接专业" />
         </button>
 
         {/* 快捷入口 */}
@@ -148,7 +148,7 @@ export default function HomePage() {
 
         {/* 赛事宣传 Banner */}
         <button className="banner-img" style={{ marginTop: 16 }} onClick={() => nav('/event/e1')} aria-label="2025 专体杯全国体育赛事 立即报名">
-          <img src="/img/home_event.jpg?v=2" alt="2025 专体杯全国体育赛事" />
+          <img src="img/home_event.jpg?v=2" alt="2025 专体杯全国体育赛事" />
         </button>
 
         <MockFooter />

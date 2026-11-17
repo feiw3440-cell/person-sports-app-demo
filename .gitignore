@@ -23,3 +23,6 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# 后端 / PC 端项目资料（不属于 APP Demo 仓库）
+server/

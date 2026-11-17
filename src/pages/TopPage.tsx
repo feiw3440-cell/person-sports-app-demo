@@ -47,7 +47,7 @@ export default function TopPage() {
     <>
       {/* 主视觉（原型裁切，含品牌与标题；右上角搜索 + 消息通知入口） */}
       <div className="top-hero">
-        <img src="/img/top_hero.jpg" alt="TOP 榜单" />
+        <img src="img/top_hero.jpg" alt="TOP 榜单" />
         <button className="top-hero-bell" onClick={() => nav('/messages')} aria-label="消息通知">
           <Icon name="bell" size={19} />
           {unread > 0 && <span className="rb">{unread}</span>}
@@ -83,7 +83,7 @@ export default function TopPage() {
           onClick={() => nav('/athlete/nw1')}
           aria-label="本期焦点：体育之星 榜样力量"
         >
-          <img src="/img/top_focus.jpg" alt="体育之星·榜样力量" />
+          <img src="img/top_focus.jpg" alt="体育之星·榜样力量" />
         </button>
 
         {/* 运动员排行榜（前三荣誉展示） */}
