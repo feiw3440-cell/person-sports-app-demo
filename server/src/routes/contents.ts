@@ -5,8 +5,8 @@ import { db } from '../db'
 import { requirePerm } from '../rbac'
 import { audit } from '../audit'
 import { applyFlow } from '../statemachine'
-import { assertVersion } from '../helpers'
-import { err, nowISO } from '../util'
+import { assertVersion, idempotencyReplay, idempotencySave } from '../helpers'
+import { err, newId, nowISO } from '../util'
 
 function contentOut(id: string): Record<string, unknown> | undefined {
   const row = db.prepare('SELECT * FROM contents WHERE id = ?').get(id) as Record<string, unknown> | undefined
@@ -38,16 +38,53 @@ export async function contentRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ data: rows.map((r) => contentOut(r.id)), meta: { total: total.c, page, page_size: pageSize } })
   })
 
+  /* 内容创建（闭环核心：APP 提交 → 作者提审 → 平台发布 → APP 发现页可见） */
+  app.post('/contents', async (req, reply) => {
+    const ctx = requireAuth(req)
+    requirePerm(ctx, 'contents', 'write') // coach/mentor/content_editor（data_scope=self，作者本人）
+    const replay = idempotencyReplay(req, ctx.accountId)
+    if (replay) {
+      reply.header('Idempotency-Replayed', 'true')
+      reply.code(replay.status)
+      return replay.body
+    }
+    const b = (req.body ?? {}) as { type?: string; title?: string; summary?: string; media_url?: string; project_id?: string }
+    const type = String(b.type ?? '')
+    if (!['video', 'article'].includes(type)) throw err.validation('type 必须为 video 或 article')
+    const title = String(b.title ?? '').trim()
+    if (!title) throw err.validation('缺少标题（title）')
+    if (title.length > 100) throw err.validation('标题过长（≤100 字）')
+    const summary = b.summary ? String(b.summary) : null
+    if (summary && summary.length > 2000) throw err.validation('正文过长（≤2000 字）')
+    let projectId: string | null = null
+    if (b.project_id) {
+      const p = db.prepare('SELECT id FROM sports_projects WHERE id = ?').get(String(b.project_id)) as { id: string } | undefined
+      if (!p) throw err.validation('关联体育项目不存在')
+      projectId = p.id
+    }
+    const id = newId('ct_')
+    db.prepare(
+      "INSERT INTO contents(id, type, title, summary, author_account_id, media_url, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, 'draft', ?, ?, 1)",
+    ).run(id, type, title, summary, ctx.accountId, b.media_url ? String(b.media_url) : null, nowISO(), nowISO())
+    if (projectId) db.prepare('INSERT INTO content_project_links(content_id, project_id) VALUES (?, ?)').run(id, projectId)
+    audit(ctx, { action: 'content.create', resourceType: 'content', resourceId: id, after: { type, title, status: 'draft', project_id: projectId } })
+    const body = { data: { id, status: 'draft', version: 1 } }
+    idempotencySave(req, ctx.accountId, 201, body)
+    reply.code(201)
+    return reply.send(body)
+  })
+
   app.post('/contents/:id/actions', async (req, reply) => {
     const ctx = requireAuth(req)
     const { id } = req.params as { id: string }
     const { action, version } = (req.body ?? {}) as { action: string; version?: number }
     const row = db.prepare('SELECT * FROM contents WHERE id = ?').get(id) as Record<string, unknown> | undefined
     if (!row) throw err.forbidden()
-    const perm = requirePerm(ctx, 'contents', 'review')
-    if (perm.data_scope !== 'platform' && perm.data_scope !== 'all' && row.author_account_id !== ctx.accountId) throw err.forbidden()
-    if (row.author_account_id === ctx.accountId && ['publish', 'offline'].includes(action)) {
-      // 审核者不能直接发布/下架自己的内容？演示环境允许（记录审计）
+    // 提审是作者本人动作（与资质 submit 同口径）；publish/offline 为平台审核动作（contents.review）
+    const isAuthorSubmit = action === 'submit_review' && row.author_account_id === ctx.accountId
+    if (!isAuthorSubmit) {
+      const perm = requirePerm(ctx, 'contents', 'review')
+      if (perm.data_scope !== 'platform' && perm.data_scope !== 'all' && row.author_account_id !== ctx.accountId) throw err.forbidden()
     }
     const result = applyFlow(ctx, `content.${action}`, { status: row.status as string, version: row.version as number }, { action, version })
     if (result.after === 'published' && !row.published_at) {

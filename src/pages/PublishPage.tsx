@@ -1,12 +1,13 @@
 // 发布页 v1：创作者发布中心（高保真设计页）
 // 结构：返回栏 → 身份提示 → 发布类型三卡（教学内容按身份加锁） → 表单（标题/正文/媒体/关联项目/话题） → 发布按钮
-// 演示说明：发布为本地原型，内容不会真实保存或上传
+// API 模式：POST /v1/contents 创建草稿 → 作者 submit_review → 平台（PC）审核发布 → 通过后出现在发现页
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { PROJECTS, ROLE_LABEL } from '../data/db'
+import { PROJECTS, ROLE_LABEL, DATA_SOURCE } from '../data/db'
 import { currentRole, useApp } from '../store/store'
 import Icon from '../components/Icon'
 import { MockFooter } from '../components/ui'
+import { api, ApiError } from '../services/apiClient'
 
 type PubType = 'post' | 'video' | 'teach'
 
@@ -21,6 +22,8 @@ export default function PublishPage() {
   const [body, setBody] = useState('')
   const [project, setProject] = useState('')
   const [topics, setTopics] = useState<string[]>([])
+  const [submitting, setSubmitting] = useState(false)
+  const [submitErr, setSubmitErr] = useState('')
   const canTeach = role.type === 'coach' || role.type === 'mentor'
 
   const TYPE_CARDS: { key: PubType; label: string; desc: string; icon: string }[] = [
@@ -29,14 +32,41 @@ export default function PublishPage() {
     { key: 'teach', label: '教学内容', desc: '教学课件 · 课程·训练计划', icon: 'grad' },
   ]
 
-  const publish = () => {
-    if (!title.trim()) return pushToast('先给内容起个标题吧（演示）')
-    pushToast('发布成功（演示环境：内容不会真实保存）')
-    setTitle('')
-    setBody('')
-    setProject('')
-    setTopics([])
-    setType('post')
+  /** API 模式：创建草稿 + 作者提审（服务端权威；通过平台审核后进入发现页） */
+  const publish = async () => {
+    if (!title.trim()) return pushToast('先给内容起个标题吧')
+    setSubmitting(true)
+    setSubmitErr('')
+    try {
+      // 话题并入正文开头（服务端无独立话题字段；不丢弃用户输入）
+      const topicsHead = topics.length ? topics.join(' ') + '\n' : ''
+      const d = await api<{ data: { id: string; status: string; version: number } }>(
+        'POST',
+        '/contents',
+        {
+          type: type === 'video' ? 'video' : 'article', // post/teach 落库为 article（图文形态）
+          title: title.trim(),
+          summary: topicsHead + body.trim() || undefined,
+          project_id: DATA_SOURCE === 'api' && project ? project : undefined,
+        },
+        { idempotency: true },
+      )
+      await api('POST', `/contents/${d.data.id}/actions`, { action: 'submit_review', version: d.data.version })
+      pushToast('已提交平台审核，通过后在发现页展示')
+      setTitle('')
+      setBody('')
+      setProject('')
+      setTopics([])
+      setType('post')
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 403 || e.code === 'FORBIDDEN')) {
+        setSubmitErr('当前身份无发布权限：内容发布需教练 / 导师身份（可在「身份管理」中切换）')
+      } else {
+        setSubmitErr(e instanceof Error ? e.message : '发布失败（网络异常）')
+      }
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -148,12 +178,21 @@ export default function PublishPage() {
         </div>
 
         {/* 发布按钮 */}
-        <button className="pub-submit" onClick={publish}>
-          <Icon name="flash" size={18} /> 发布
+        <button className="pub-submit" disabled={submitting} onClick={() => void publish()}>
+          <Icon name="flash" size={18} /> {submitting ? '提交中…' : '发布'}
         </button>
-        <div className="t-mini center mt8">演示环境：发布不会真实上传或保存 · {ROLE_LABEL[role.type] || role.label}身份</div>
+        {submitErr && (
+          <div className="t-mini center mt8" style={{ color: '#c0392b' }}>
+            {submitErr}
+          </div>
+        )}
+        <div className="t-mini center mt8">
+          {DATA_SOURCE === 'api'
+            ? `发布后进入平台审核（PC 管理端），通过后在发现页展示 · ${ROLE_LABEL[role.type] || role.label}身份`
+            : `演示环境：发布不会真实上传或保存 · ${ROLE_LABEL[role.type] || role.label}身份`}
+        </div>
 
-        <MockFooter text="发布功能为交互原型：类型权限与身份体系对应 PRD §7；不含任何交易能力" />
+        {DATA_SOURCE === 'mock' && <MockFooter text="发布功能为交互原型：类型权限与身份体系对应 PRD §7；不含任何交易能力" />}
       </div>
     </>
   )
