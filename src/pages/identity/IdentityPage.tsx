@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../../services/apiClient'
 import { fetchAllAndHydrate } from '../../services/serverData'
 import { useSession } from '../../services/session'
-import { currentRole, useApp } from '../../store/store'
+import { DATA_SOURCE, currentRole, useApp } from '../../store/store'
 import Icon from '../../components/Icon'
 import DetailHeader from '../../components/DetailHeader'
 import { MockFooter } from '../../components/ui'
@@ -63,6 +63,8 @@ export default function IdentityPage() {
   const [busy, setBusy] = useState(false)
 
   const loadMe = useCallback((removed: { current: boolean }) => {
+    // Mock 数据源无共享 API：身份列表走本地静态 ROLES，不发起 /me 请求
+    if (DATA_SOURCE === 'mock') return
     api<{ data: MeResponse }>('GET', '/me')
       .then((res) => { if (!removed.current) setMe(res.data) })
       .catch((e) => { if (!removed.current) pushToast(`读取身份失败：${e instanceof Error ? e.message : '网络异常'}`) })
