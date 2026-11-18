@@ -1,4 +1,5 @@
 // 授权详情/链路：范围字段 + 状态 + 链路可视化（导师 → 授权教练 → 学员）
+// 账号 ID 与人员档案 ID 命名空间不同：优先公开档案，缺失时使用服务端授权双方名称
 import { useNavigate, useParams } from 'react-router-dom'
 import { AUTHORIZATIONS, MENTORSHIPS, userById } from '../../data/db'
 import Icon from '../../components/Icon'
@@ -11,8 +12,13 @@ export default function AuthorizationDetail() {
   const az = AUTHORIZATIONS.find((a) => a.id === id)
   if (!az) return <EmptyState title="授权记录不存在" />
 
-  const mentor = userById(az.mentorId)!
-  const grantee = userById(az.granteeId)!
+  const mentor = userById(az.mentorId)
+  const grantee = userById(az.granteeId)
+  const mentorName = mentor?.name || az.mentorName || '导师'
+  const granteeName = grantee?.name || az.granteeName || '被授权方'
+  const mentorColor = mentor?.color || '#12345B'
+  const granteeColor = grantee?.color || '#2872B8'
+  const mentorTitle = mentor?.title || '导师'
   const children = AUTHORIZATIONS.filter((a) => a.parentAuthorizationId === az.id)
   const parent = az.parentAuthorizationId ? AUTHORIZATIONS.find((a) => a.id === az.parentAuthorizationId) : undefined
 
@@ -50,7 +56,8 @@ export default function AuthorizationDetail() {
           </div>
           {parent && (
             <div className="t-mini mt8">
-              上级授权：{userById(parent.mentorId)?.name} → {userById(parent.granteeId)?.name}（点击
+              上级授权：{userById(parent.mentorId)?.name || parent.mentorName || '导师'} →{' '}
+              {userById(parent.granteeId)?.name || parent.granteeName || '被授权方'}（点击
               <button className="t-blue" onClick={() => nav(`/authorization/${parent.id}`)}>
                 查看上级授权
               </button>
@@ -59,12 +66,12 @@ export default function AuthorizationDetail() {
           )}
           <div className="mt12">
             <div className={`chain-node ${parent ? '' : 'hot'}`}>
-              <Avatar name={mentor.name} color={mentor.color} size="sm" />
+              <Avatar name={mentorName} color={mentorColor} size="sm" />
               <div style={{ flex: 1 }}>
                 <div className="t-title" style={{ fontSize: 13.5 }}>
-                  {mentor.name}
+                  {mentorName}
                 </div>
-                <div className="t-mini">导师（授权方）· {mentor.title}</div>
+                <div className="t-mini">导师（授权方）· {mentorTitle}</div>
               </div>
               <span className="badge badge-brand">导师</span>
             </div>
@@ -73,12 +80,12 @@ export default function AuthorizationDetail() {
               <span>授权{az.allowSubGrant ? '（可再授权）' : ''}</span>
             </div>
             <div className={`chain-node ${parent ? 'hot' : ''}`}>
-              <Avatar name={grantee.name} color={grantee.color} size="sm" />
+              <Avatar name={granteeName} color={granteeColor} size="sm" />
               <div style={{ flex: 1 }}>
                 <div className="t-title" style={{ fontSize: 13.5 }}>
-                  {grantee.name} {grantee.id === 'u0' && '（我）'}
+                  {granteeName} {grantee?.id === 'u0' && '（我）'}
                 </div>
-                <div className="t-mini">{grantee.kind === 'mentor' ? '导师' : '授权教练'} · 被授权方</div>
+                <div className="t-mini">{grantee?.kind === 'mentor' ? '导师' : '授权教练'} · 被授权方</div>
               </div>
               <span className="badge badge-blue">被授权</span>
             </div>
@@ -89,14 +96,16 @@ export default function AuthorizationDetail() {
                   <span>再授权 × {children.length}</span>
                 </div>
                 {children.map((c) => {
-                  const st = userById(c.granteeId)!
+                  const st = userById(c.granteeId)
+                  const stName = st?.name || c.granteeName || '学员'
+                  const stColor = st?.color || '#2872B8'
                   return (
                     <div key={c.id}>
                       <div className="chain-node">
-                        <Avatar name={st.name} color={st.color} size="sm" />
+                        <Avatar name={stName} color={stColor} size="sm" />
                         <div style={{ flex: 1 }}>
                           <div className="t-title" style={{ fontSize: 13.5 }}>
-                            {st.name}
+                            {stName}
                           </div>
                           <div className="t-mini">
                             学员 · {c.scope.content} · {c.scope.term}

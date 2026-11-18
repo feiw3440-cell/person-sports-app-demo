@@ -14,6 +14,9 @@ export default function OrganizationPage() {
   if (!o) return <EmptyState title="机构不存在" />
   const projects = o.projectIds.map((pid) => projectById(pid)).filter(Boolean)
   const members = o.memberIds.map((mid) => userById(mid)).filter(Boolean) as NonNullable<ReturnType<typeof userById>>[]
+  const memberInfo = new Map((o.memberDetails || []).map((m) => [m.profileId, m]))
+  const roleZh = (r: string) => ({ org_admin: '管理员', coach: '教练', athlete: '运动员', member: '成员' } as Record<string, string>)[r] || r || '成员'
+  const statusZh = (s: string) => (s === 'accepted' ? '有效' : s === 'pending' ? '待接受' : s)
   const relatedEvents = EVENTS.filter((e) => o.projectIds.includes(e.projectId)).slice(0, 2)
 
   return (
@@ -48,14 +51,25 @@ export default function OrganizationPage() {
             <div className="sec-title">教练 / 导师 · {members.length}</div>
           </div>
           <div className="list">
-            {members.map((m) => (
-              <PersonRow
-                key={m.id}
-                u={m}
-                right={<Icon name="arrow-r" size={16} style={{ color: 'var(--ink-3)' }} />}
-                onClick={() => nav(m.kind === 'mentor' ? `/mentor/${m.id}` : `/athlete/${m.id}`)}
-              />
-            ))}
+            {members.map((m) => {
+              const info = memberInfo.get(m.id)
+              return (
+                <PersonRow
+                  key={m.id}
+                  u={m}
+                  right={
+                    info ? (
+                      <span className="t-mini" style={{ color: 'var(--ink-3)', textAlign: 'right' }}>
+                        {roleZh(info.role)} · {statusZh(info.status)}
+                      </span>
+                    ) : (
+                      <Icon name="arrow-r" size={16} style={{ color: 'var(--ink-3)' }} />
+                    )
+                  }
+                  onClick={() => nav(m.kind === 'mentor' ? `/mentor/${m.id}` : `/athlete/${m.id}`)}
+                />
+              )
+            })}
           </div>
         </div>
 

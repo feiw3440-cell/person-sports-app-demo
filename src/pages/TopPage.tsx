@@ -3,11 +3,24 @@
 // 完整榜单（含筛选与异常状态）在 /top/rank/:category
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { HOT_MENTORS, MESSAGES, PODIUM, userById } from '../data/db'
+import { DATA_SOURCE, MESSAGES, PODIUM, userById } from '../data/db'
+import { rankingRows } from '../data/rankings'
+import { mentorCards } from '../services/mentorCards'
 import { useApp } from '../store/store'
 import type { RankCategory, RankMode } from '../types'
 import Icon from '../components/Icon'
-import { MockFooter } from '../components/ui'
+import { EmptyState, MockFooter } from '../components/ui'
+
+type PodiumEntry = {
+  id: string
+  rank: number
+  name: string
+  color: string
+  photo?: string
+  title: string
+  vals: Partial<Record<RankMode, number>>
+  hasProfile: boolean
+}
 
 const MODES: { key: RankMode; label: string; icon: string; valLabel: string }[] = [
   { key: 'overall', label: '综合榜', icon: 'trophy', valLabel: '综合指数' },
@@ -39,9 +52,53 @@ export default function TopPage() {
   const [mode, setMode] = useState<RankMode>('overall')
   const readMsgs = useApp((s) => s.readMsgs)
   const modeDef = MODES.find((m) => m.key === mode)!
-  const podium = [...PODIUM].sort((a, b) => a.rank - b.rank)
-  const ordered = [podium[1], podium[0], podium[2]] // 展示顺序：亚军·冠军·季军
   const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).reduce((n, m) => n + (m.badge || 1), 0)
+
+  // 三种模式的名次分数：服务端榜单为准（Mock 模式仍用本地演示值）
+  const scoreByMode = new Map<string, Partial<Record<RankMode, number>>>()
+  if (DATA_SOURCE !== 'mock') {
+    for (const item of MODES) {
+      for (const row of rankingRows('athlete', item.key)) {
+        const scores = scoreByMode.get(row.entity_id) || {}
+        scores[item.key] = row.score
+        scoreByMode.set(row.entity_id, scores)
+      }
+    }
+  }
+
+  const podium: PodiumEntry[] =
+    DATA_SOURCE === 'mock'
+      ? PODIUM.map((item) => {
+          const user = userById(item.id)
+          return {
+            id: item.id,
+            rank: item.rank,
+            name: user?.name || '运动员',
+            color: user?.color || '#2872B8',
+            photo: user?.photo,
+            title: (user?.title || '运动员').replace('运动员', '').trim() || '运动员',
+            vals: item.vals,
+            hasProfile: !!user,
+          }
+        }).sort((a, b) => a.rank - b.rank)
+      : rankingRows('athlete', 'overall')
+          .slice(0, 3)
+          .map((row) => {
+            const user = userById(row.entity_id)
+            return {
+              id: row.entity_id,
+              rank: row.rank,
+              name: user?.name || row.name,
+              color: user?.color || '#2872B8',
+              photo: user?.photo,
+              title: (user?.title || '运动员').replace('运动员', '').trim() || '运动员',
+              vals: scoreByMode.get(row.entity_id) || { overall: row.score },
+              hasProfile: !!user,
+            }
+          })
+
+  const ordered = podium.length >= 3 ? [podium[1], podium[0], podium[2]] : podium
+  const mentors = mentorCards('popularity', 3)
 
   return (
     <>
@@ -80,7 +137,7 @@ export default function TopPage() {
         <button
           className="banner-img"
           style={{ marginTop: 14 }}
-          onClick={() => nav('/athlete/nw1')}
+          onClick={() => nav(podium[0]?.hasProfile ? `/athlete/${podium[0].id}` : '/top/rank/athlete')}
           aria-label="本期焦点：体育之星 榜样力量"
         >
           <img src="img/top_focus.jpg" alt="体育之星·榜样力量" />
@@ -93,24 +150,48 @@ export default function TopPage() {
             查看全部 <Icon name="arrow-r" size={12} />
           </button>
         </div>
-        <div className="podium">
-          {ordered.map((p) => {
-            const u = userById(p.id)!
-            return (
-              <button key={p.id} className={`pd-card r${p.rank}`} onClick={() => nav(`/athlete/${p.id}`)}>
+        {ordered.length === 0 ? (
+          <div className="card">
+            <EmptyState title="暂无运动员榜单数据" desc="共享 API 尚未返回运动员榜单快照。" icon="trophy" />
+          </div>
+        ) : (
+          <div className="podium">
+            {ordered.map((p) => (
+              <button
+                key={p.id}
+                className={`pd-card r${p.rank}`}
+                onClick={() => nav(p.hasProfile ? `/athlete/${p.id}` : '/top/rank/athlete')}
+              >
                 <div className="pd-crown">
                   <Crown size={p.rank === 1 ? 30 : 24} />
                 </div>
-                <img className="pd-avatar" src={u.photo} alt={u.name} />
-                <div className="pd-name">{u.name}</div>
-                <div className="pd-sub">{(u.title || '').replace('运动员', '')}</div>
+                {p.photo ? (
+                  <img className="pd-avatar" src={p.photo} alt={p.name} />
+                ) : (
+                  <div
+                    className="pd-avatar"
+                    style={{
+                      background: `linear-gradient(135deg, ${p.color}, ${p.color}CC)`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#fff',
+                      fontSize: p.rank === 1 ? 30 : 26,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {p.name.slice(0, 1)}
+                  </div>
+                )}
+                <div className="pd-name">{p.name}</div>
+                <div className="pd-sub">{p.title}</div>
                 <div className="pd-val">
-                  {modeDef.valLabel} {p.vals[mode]}
+                  {modeDef.valLabel} {p.vals[mode] ?? '—'}
                 </div>
               </button>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+        )}
 
         {/* 热门导师榜 */}
         <div className="sec2">
@@ -119,28 +200,69 @@ export default function TopPage() {
             查看全部 <Icon name="arrow-r" size={12} />
           </button>
         </div>
-        <div className="hm-grid">
-          {HOT_MENTORS.map((h, i) => {
-            const u = userById(h.id)!
-            return (
-              <button key={h.id} className="hm-card" onClick={() => nav(`/mentor/${h.id}`)}>
-                <span className={`hm-rank ${i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}`}>{i + 1}</span>
-                <span className="hm-verify">
-                  <Icon name="shield" size={8} /> 认证
-                </span>
-                <img className="hm-avatar" src={u.photo} alt={u.name} />
-                <div className="hm-name">{u.name}</div>
-                <div className="hm-sub">
-                  {(u.title || '').replace('导师', '')} · {u.mentorInfo?.level.split('（')[0]}
-                </div>
-                <div className="hm-heat">
-                  <Icon name="flame" size={12} />
-                  {h.heat}
-                </div>
-              </button>
-            )
-          })}
-        </div>
+        {mentors.length === 0 ? (
+          <div className="card">
+            <EmptyState title="暂无导师榜单数据" desc="共享 API 当前未返回导师榜单或导师档案。" icon="grad" />
+          </div>
+        ) : (
+          <>
+            <div className="hm-grid">
+              {mentors.map((m, i) => {
+                const sub =
+                  [m.title?.replace('导师', '').trim(), m.level?.split('（')[0]].filter(Boolean).join(' · ') ||
+                  (m.source === 'mentorship' ? '与你建立师徒关系' : '导师')
+                return (
+                  <button
+                    key={m.id}
+                    className="hm-card"
+                    onClick={() => nav(m.hasProfile ? `/mentor/${m.id}` : '/mentorship')}
+                  >
+                    <span className={`hm-rank ${i === 1 ? 'silver' : i === 2 ? 'bronze' : ''}`}>{i + 1}</span>
+                    <span className="hm-verify">
+                      <Icon name="shield" size={8} /> {m.verify === 'verified' ? '认证' : '导师'}
+                    </span>
+                    {m.photo ? (
+                      <img className="hm-avatar" src={m.photo} alt={m.name} />
+                    ) : (
+                      <div
+                        className="hm-avatar"
+                        style={{
+                          background: `linear-gradient(135deg, ${m.color}, ${m.color}CC)`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: '#fff',
+                          fontSize: 28,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {m.name.slice(0, 1)}
+                      </div>
+                    )}
+                    <div className="hm-name">{m.name}</div>
+                    <div className="hm-sub">{sub}</div>
+                    <div className="hm-heat">
+                      {m.score !== undefined ? (
+                        <>
+                          <Icon name="flame" size={12} />
+                          {m.score}
+                        </>
+                      ) : (
+                        <>
+                          <Icon name="grad" size={12} />
+                          我的导师
+                        </>
+                      )}
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+            {mentors.every((m) => m.source === 'mentorship') && (
+              <div className="demo-strip">服务端暂无导师榜快照，以下展示与当前账号有师徒关系的导师。</div>
+            )}
+          </>
+        )}
 
         <MockFooter text="榜单人物、指数与排序均为演示数据 · 正式榜单规则待确认" />
       </div>

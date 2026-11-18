@@ -2,7 +2,7 @@
 import type { FastifyInstance } from 'fastify'
 import { requireAuth } from '../auth'
 import { db } from '../db'
-import { requirePerm, rolesOf } from '../rbac'
+import { checkPerm, mentorGrantedAccountIds, requirePerm, rolesOf } from '../rbac'
 import { audit } from '../audit'
 import { err, nowISO } from '../util'
 
@@ -64,10 +64,26 @@ export async function miscRoutes(app: FastifyInstance): Promise<void> {
       const cc = db.prepare("SELECT COUNT(*) AS c FROM contents WHERE status = 'pending_review'").get() as { c: number }
       if (cc.c) todos.push({ label: '待审核内容', count: cc.c, ref: '/contents' })
     }
-    // 数据卡片（口径注明 + 更新时间）
+    // 数据卡片：人员档案必须与 /people 的数据范围同口径，不能使用全表计数
+    const peoplePerm = checkPerm(ctx, 'people', 'read')
+    let peopleCount = 0
+    if (peoplePerm?.data_scope === 'self') {
+      peopleCount = (db.prepare('SELECT COUNT(*) AS c FROM person_profiles WHERE account_id = ?').get(ctx.accountId) as { c: number }).c
+    } else if (peoplePerm?.data_scope === 'own_org') {
+      if (ctx.orgId) {
+        peopleCount = (db.prepare("SELECT COUNT(*) AS c FROM person_profiles WHERE account_id IN (SELECT account_id FROM memberships WHERE org_id = ? AND status = 'accepted')").get(ctx.orgId) as { c: number }).c
+      }
+    } else if (peoplePerm?.data_scope === 'granted_scope') {
+      const mentees = mentorGrantedAccountIds(ctx)
+      if (mentees.length) {
+        peopleCount = (db.prepare(`SELECT COUNT(*) AS c FROM person_profiles WHERE account_id IN (${mentees.map(() => '?').join(',')})`).get(...mentees) as { c: number }).c
+      }
+    } else if (peoplePerm) {
+      peopleCount = (db.prepare('SELECT COUNT(*) AS c FROM person_profiles').get() as { c: number }).c
+    }
     const cards = {
       projects: (db.prepare("SELECT COUNT(*) AS c FROM sports_projects WHERE status = 'active'").get() as { c: number }).c,
-      people: (db.prepare('SELECT COUNT(*) AS c FROM person_profiles').get() as { c: number }).c,
+      people: peopleCount,
       courses: (db.prepare("SELECT COUNT(*) AS c FROM courses WHERE status = 'published'").get() as { c: number }).c,
       competitions: (db.prepare("SELECT COUNT(*) AS c FROM competitions WHERE status IN ('published','registration_closed','in_progress')").get() as { c: number }).c,
     }
@@ -106,15 +122,40 @@ export async function miscRoutes(app: FastifyInstance): Promise<void> {
     const roles = rolesOf(ctx)
     const isPlatform = roles.some((r) => ['platform_admin', 'platform_ops'].includes(r))
     const orgFilter = !isPlatform && ctx.orgId
+    // 客户端传入的 org_id 不参与授权：范围只由登录上下文的 org_id / 成员关系决定
     let rows: Record<string, unknown>[] = []
     if (domain === 'project') {
+      const args: unknown[] = []
+      let scopeSql = ''
+      if (!isPlatform) {
+        if (orgFilter) {
+          // 本组织关联的项目：人员档案 / 课程 / 赛事任一关联命中即可
+          scopeSql = ` AND (
+            s.id IN (SELECT l.project_id FROM profile_project_links l
+                     JOIN person_profiles p ON p.id = l.profile_id
+                     JOIN memberships m ON m.account_id = p.account_id
+                     WHERE m.org_id = ? AND m.status = 'accepted')
+            OR s.id IN (SELECT l.project_id FROM course_project_links l JOIN courses c ON c.id = l.course_id WHERE c.org_id = ?)
+            OR s.id IN (SELECT l.project_id FROM competition_project_links l JOIN competitions c ON c.id = l.competition_id WHERE c.organizer_org_id = ?)
+          )`
+          args.push(ctx.orgId, ctx.orgId, ctx.orgId)
+        } else {
+          // 无组织上下文的普通账号：仅本人档案/报名关联的项目
+          scopeSql = ` AND (
+            s.id IN (SELECT l.project_id FROM profile_project_links l JOIN person_profiles p ON p.id = l.profile_id WHERE p.account_id = ?)
+            OR s.id IN (SELECT l.project_id FROM course_project_links l JOIN enrollments e ON e.course_id = l.course_id WHERE e.account_id = ?)
+            OR s.id IN (SELECT l.project_id FROM competition_project_links l JOIN registrations r ON r.competition_id = l.competition_id WHERE r.account_id = ?)
+          )`
+          args.push(ctx.accountId, ctx.accountId, ctx.accountId)
+        }
+      }
       rows = db.prepare(
         `SELECT s.name AS name,
           (SELECT COUNT(*) FROM profile_project_links l WHERE l.project_id = s.id) AS people,
           (SELECT COUNT(*) FROM course_project_links l WHERE l.project_id = s.id) AS courses,
           (SELECT COUNT(*) FROM competition_project_links l WHERE l.project_id = s.id) AS competitions
-         FROM sports_projects s WHERE s.status = 'active' ORDER BY people DESC`,
-      ).all() as Record<string, unknown>[]
+         FROM sports_projects s WHERE s.status = 'active'${scopeSql} ORDER BY people DESC`,
+      ).all(...args) as Record<string, unknown>[]
     } else if (domain === 'training') {
       rows = db.prepare(
         `SELECT c.name AS name, c.status AS status,
@@ -130,16 +171,36 @@ export async function miscRoutes(app: FastifyInstance): Promise<void> {
          FROM competitions c ${orgFilter ? 'WHERE c.organizer_org_id = ?' : ''} ORDER BY c.date_start DESC LIMIT 20`,
       ).all(...(orgFilter ? [ctx.orgId] : [])) as Record<string, unknown>[]
     } else {
-      // org：成员构成
-      rows = db.prepare(
-        `SELECT o.name AS org_name, o.type AS org_type,
-          (SELECT COUNT(*) FROM memberships m WHERE m.org_id = o.id AND m.status = 'accepted') AS members,
-          (SELECT COUNT(*) FROM courses c WHERE c.org_id = o.id) AS courses,
-          (SELECT COUNT(*) FROM competitions c WHERE c.organizer_org_id = o.id) AS competitions
-         FROM organizations o ORDER BY members DESC`,
-      ).all() as Record<string, unknown>[]
+      // org：成员构成。非平台账号只能看到自己所属机构（无组织上下文则返回空）
+      if (isPlatform) {
+        rows = db.prepare(
+          `SELECT o.name AS org_name, o.type AS org_type,
+            (SELECT COUNT(*) FROM memberships m WHERE m.org_id = o.id AND m.status = 'accepted') AS members,
+            (SELECT COUNT(*) FROM courses c WHERE c.org_id = o.id) AS courses,
+            (SELECT COUNT(*) FROM competitions c WHERE c.organizer_org_id = o.id) AS competitions
+           FROM organizations o ORDER BY members DESC`,
+        ).all() as Record<string, unknown>[]
+      } else if (orgFilter) {
+        rows = db.prepare(
+          `SELECT o.name AS org_name, o.type AS org_type,
+            (SELECT COUNT(*) FROM memberships m WHERE m.org_id = o.id AND m.status = 'accepted') AS members,
+            (SELECT COUNT(*) FROM courses c WHERE c.org_id = o.id) AS courses,
+            (SELECT COUNT(*) FROM competitions c WHERE c.organizer_org_id = o.id) AS competitions
+           FROM organizations o WHERE o.id = ? ORDER BY members DESC`,
+        ).all(ctx.orgId) as Record<string, unknown>[]
+      } else {
+        rows = []
+      }
     }
-    return reply.send({ data: { domain, rows, generated_at: nowISO(), note: '指标口径：本机权威库实时聚合（演示）' }, meta: {} })
+    return reply.send({
+      data: {
+        domain,
+        rows,
+        generated_at: nowISO(),
+        note: `指标口径：本机权威库实时聚合（演示） · 数据范围=${isPlatform ? '平台' : orgFilter ? '本组织' : '本人'}（客户端 org_id 不参与授权）`,
+      },
+      meta: {},
+    })
   })
 
   /* 导出（单独授权 + 审计）：CSV */

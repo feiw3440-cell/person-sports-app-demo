@@ -5,7 +5,7 @@ import { useApp } from '../../store/store'
 import Icon from '../../components/Icon'
 import DetailHeader from '../../components/DetailHeader'
 import { Avatar, Cover, EmptyState, MockFooter, VerifyBadge } from '../../components/ui'
-import { CourseRow, FollowButton, PersonRow, fmt } from '../../components/cards'
+import { CourseRow, FollowButton, fmt } from '../../components/cards'
 import { contentsByAuthor } from '../../services/api'
 
 export default function MentorProfile() {
@@ -32,7 +32,10 @@ export default function MentorProfile() {
   const project = projectById(projectOfUser(u.id))
   const courses = COURSES.filter((k) => k.mentorId === u.id)
   const works = contentsByAuthor(u.id)
-  const students = MENTORSHIPS.filter((ms) => ms.mentorId === u.id)
+  // 服务端师徒关系用账号 ID，页面人物档案用 profile ID：统一通过映射后的 profile ID 关联
+  const students = MENTORSHIPS.filter((ms) => (ms.mentorProfileId || ms.mentorId) === u.id)
+  const headerParts = [u.title || '导师', project?.name, u.region].filter(Boolean) as string[]
+  const levelLabel = (u.mentorInfo?.level || '').split('（')[0] || '认证导师'
   void AUTHORIZATIONS
   const followOn = !!follows[u.id]
 
@@ -49,7 +52,7 @@ export default function MentorProfile() {
               </span>
               <VerifyBadge verify={u.verify} />
             </div>
-            <div className="dh-sub">{u.title} · {project?.name} · {u.region}</div>
+            <div className="dh-sub">{headerParts.join(' · ')}</div>
             <div className="dh-sub">粉丝 {fmt(u.followers || 0)}（模拟）</div>
           </div>
         </div>
@@ -58,7 +61,7 @@ export default function MentorProfile() {
       <div className="page detail-body">
         <div className="card detail-actions" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <div className="flex gap8 wrap">
-            <span className="badge badge-brand">{u.mentorInfo?.level.split('（')[0]}</span>
+            <span className="badge badge-brand">{levelLabel}</span>
             <span className="badge badge-blue">平台审核通过（演示语义）</span>
             <VerifyBadge verify={u.verify} />
           </div>
@@ -94,7 +97,7 @@ export default function MentorProfile() {
             <span className="k">
               <Icon name="users" size={13} />学员
             </span>
-            <span className="v">{u.mentorInfo?.studentCount} 名（模拟）</span>
+            <span className="v">{students.length} 名（服务端真实关系）</span>
           </div>
           <div className="t-mini mt8">
             导师等级名称与准入标准为演示占位，正式规则待确认；模拟账号不冒充真实认证。
@@ -139,22 +142,35 @@ export default function MentorProfile() {
           {students.length ? (
             <div className="list">
               {students.map((ms) => {
-                const st = userById(ms.menteeId)!
+                // 服务端关系存 account_id；页面必须用映射后的 profile_id 查公开档案，缺失时用服务端名称兜底
+                const st = userById(ms.menteeProfileId || ms.menteeId)
+                const stName = st?.name || ms.menteeName || '未知学员'
+                const stColor = st?.color || '#2872B8'
                 const grant = AUTHORIZATIONS.find((a) => a.mentorshipId === ms.id)
+                const target = st ? (st.kind === 'mentor' ? `/mentor/${st.id}` : `/athlete/${st.id}`) : undefined
                 return (
-                  <PersonRow
-                    key={ms.id}
-                    u={st}
-                    right={
-                      grant ? (
-                        <button className="btn btn-sm btn-ghost" onClick={(e) => { e.stopPropagation(); nav(`/authorization/${grant.id}`) }}>
-                          {grant.status}
-                        </button>
-                      ) : (
-                        <span className="badge badge-pending">无授权</span>
-                      )
-                    }
-                  />
+                  <div key={ms.id} className="row-item" onClick={target ? () => nav(target) : undefined}>
+                    <Avatar name={stName} color={stColor} size="md" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="flex gap6">
+                        <span className="t-title" style={{ fontSize: 13.5 }}>{stName}</span>
+                        <span className="badge badge-blue">{ms.role === 'coach' ? '授权教练' : '学员'}</span>
+                        <span className={`badge ${ms.status === 'active' ? 'badge-verified' : 'badge-pending'}`}>
+                          {ms.status === 'active' ? '关系有效' : ms.status || '状态未知'}
+                        </span>
+                      </div>
+                      <div className="t-mini mt4 ellipsis1">
+                        {st ? `${st.title || '人员档案'} · ${ms.since || '建立时间未提供'}` : '服务端关系真实存在；当前会话范围内未获取到该学员的公开档案'}
+                      </div>
+                    </div>
+                    {grant ? (
+                      <button className="btn btn-sm btn-ghost" onClick={(e) => { e.stopPropagation(); nav(`/authorization/${grant.id}`) }}>
+                        {grant.status}
+                      </button>
+                    ) : (
+                      <span className="badge badge-pending">无授权</span>
+                    )}
+                  </div>
                 )
               })}
             </div>

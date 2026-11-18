@@ -15,7 +15,7 @@ import { accountContext, permSummary } from '../rbac'
 import { audit } from '../audit'
 import { err, newId, nowISO, sha256 } from '../util'
 
-function mePayload(accountId: string, identityId?: string, orgId?: string) {
+function mePayload(accountId: string, identityId?: string, orgId?: string, sessionId?: string) {
   const account = db
     .prepare('SELECT id, login_name, display_name, avatar_url, phone, locale, timezone, status, version, created_at, updated_at FROM accounts WHERE id = ?')
     .get(accountId) as Record<string, unknown> | undefined
@@ -25,13 +25,15 @@ function mePayload(accountId: string, identityId?: string, orgId?: string) {
     ...account,
     identities: ctxData.identities,
     memberships: ctxData.memberships,
+    // 供客户端在退出登录时精确撤销当前会话，不影响该账号其他设备会话
+    session_id: sessionId || null,
     perm_version: getPermVersion(),
     perm_summary: permSummary({ accountId, identityId, orgId, client: 'pc', sessionId: '-', permVersion: getPermVersion() }),
   }
 }
 
 export function mePayloadFor(ctx: AuthContext) {
-  return mePayload(ctx.accountId, ctx.identityId, ctx.orgId)
+  return mePayload(ctx.accountId, ctx.identityId, ctx.orgId, ctx.sessionId)
 }
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
@@ -56,7 +58,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         refresh_token: refreshToken,
         token_type: 'Bearer',
         expires_in: 1800,
-        me: mePayload(account.id),
+        me: mePayload(account.id, undefined, undefined, session.id),
       },
     })
   })
@@ -116,7 +118,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     db.prepare('UPDATE refresh_sessions SET identity_id = ?, org_id = ? WHERE id = ?').run(identity_id ?? null, org_id ?? null, ctx.sessionId)
     audit(ctx, { action: 'auth.context_switch', resourceType: 'account', resourceId: ctx.accountId, after: { identity_id, org_id } })
     return reply.send({
-      data: { access_token: access, token_type: 'Bearer', expires_in: 1800, me: mePayload(ctx.accountId, identity_id, org_id) },
+      data: { access_token: access, token_type: 'Bearer', expires_in: 1800, me: mePayload(ctx.accountId, identity_id, org_id, ctx.sessionId) },
     })
   })
 

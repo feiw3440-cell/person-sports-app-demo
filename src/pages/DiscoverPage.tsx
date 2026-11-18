@@ -2,7 +2,8 @@
 // 结构：搜索顶栏 → 标题 → 八大快捷分类 → 项目筛选 → 内容瀑布流 → 推荐导师 → 热门赛事
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CONTENTS, COURSES, DISCOVER_CATS, DISCOVER_MENTORS, EVENTS, MESSAGES, ORGS, USERS, userById } from '../data/db'
+import { CONTENTS, COURSES, DISCOVER_CATS, EVENTS, MESSAGES, ORGS, USERS, userById } from '../data/db'
+import { mentorCards } from '../services/mentorCards'
 import { useApp } from '../store/store'
 import Icon from '../components/Icon'
 import { Avatar, BrandLogo, DiscoverGlyph, EmptyState, MockFooter } from '../components/ui'
@@ -60,12 +61,13 @@ export default function DiscoverPage() {
 
   const feed = useMemo(() => {
     if (tile !== 'project' && tile !== 'video') return []
-    const list = CONTENTS.filter((c) => c.photo)
+    // 服务端内容可能没有封面：仍展示真实内容，缺图时用项目渐变占位
+    const list = CONTENTS
     if (cat === '全部') return list
     return list.filter((c) => c.cats?.includes(cat))
   }, [tile, cat])
 
-  const mentors = DISCOVER_MENTORS.map((id) => userById(id)!)
+  const mentors = mentorCards('overall', 3)
   const isFeed = tile === 'project' || tile === 'video'
   const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).length
 
@@ -132,7 +134,11 @@ export default function DiscoverPage() {
         {isFeed && (
           <>
             {feed.length === 0 ? (
-              <EmptyState title="暂无相关内容" desc="当前筛选下没有内容（演示数据范围有限）。" icon="play" />
+              <EmptyState
+                title="暂无相关内容"
+                desc={CONTENTS.length === 0 ? '当前账号数据范围内暂无内容。' : '当前分类下暂无内容。'}
+                icon="play"
+              />
             ) : (
               <div className="wf-grid">
                 {feed.map((c) => {
@@ -140,11 +146,41 @@ export default function DiscoverPage() {
                   return (
                     <div key={c.id} className="wf-card" onClick={() => nav(`/content/${c.id}`)}>
                       <div className="wf-photo">
-                        <img src={c.photo} alt={c.title} />
+                        {c.photo ? (
+                          <img src={c.photo} alt={c.title} />
+                        ) : (
+                          <div
+                            style={{
+                              height: 116,
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'flex-end',
+                              padding: 11,
+                              color: '#fff',
+                              background: `linear-gradient(135deg, ${c.colorA}, ${c.colorB})`,
+                            }}
+                          >
+                            <Icon name={c.type === 'video' ? 'play' : 'doc'} size={18} />
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontSize: 12.5,
+                                fontWeight: 700,
+                                lineHeight: 1.35,
+                                display: '-webkit-box',
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: 'vertical',
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {c.title}
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <div className="wf-author">
-                        <Avatar name={author?.name || '?'} color={author?.color || '#0765FE'} size="sm" />
-                        <span className="ellipsis1">{author?.name}</span>
+                        <Avatar name={author?.name || c.authorName || '内容作者'} color={author?.color || '#0765FE'} size="sm" />
+                        <span className="ellipsis1">{author?.name || c.authorName || '内容作者'}</span>
                         <span className="wf-views">
                           <Icon name="play" size={11} /> {fmt(c.metrics.views)}
                         </span>
@@ -167,9 +203,35 @@ export default function DiscoverPage() {
 
         {tile === 'mentor' && (
           <div className="list">
-            {USERS.filter((u) => u.kind === 'mentor').map((u) => (
-              <PersonRow key={u.id} u={u} right={<FollowButton targetId={u.id} />} onClick={() => nav(`/mentor/${u.id}`)} />
-            ))}
+            {mentors.length === 0 ? (
+              <EmptyState
+                title="暂无可展示的导师"
+                desc="当前账号数据范围内暂无导师榜或公开导师档案。"
+                icon="grad"
+              />
+            ) : (
+              mentors.map((m) => (
+                <div
+                  key={m.id}
+                  className="row-item"
+                  onClick={() => nav(m.hasProfile ? `/mentor/${m.id}` : '/mentorship')}
+                >
+                  <Avatar name={m.name} color={m.color} size="md" photo={m.photo} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="flex gap6">
+                      <span className="t-title" style={{ fontSize: 13.5 }}>
+                        {m.name}
+                      </span>
+                      {m.verify === 'verified' && <span className="badge badge-cert">认证</span>}
+                    </div>
+                    <div className="t-mini mt4 ellipsis1">
+                      {m.title || (m.source === 'mentorship' ? '与你建立师徒关系' : '导师')}
+                    </div>
+                  </div>
+                  <Icon name="arrow-r" size={16} style={{ color: 'var(--ink-3)' }} />
+                </div>
+              ))
+            )}
           </div>
         )}
 
@@ -223,25 +285,54 @@ export default function DiscoverPage() {
                 查看更多 <Icon name="arrow-r" size={12} />
               </button>
             </div>
-            <div className="d-mentor-grid">
-              {mentors.map((m) => (
-                <div key={m.id} className="d-mentor" onClick={() => nav(`/mentor/${m.id}`)}>
-                  <div className="dm-top">
-                    <Avatar name={m.name} color={m.color} size="md" photo={m.photo} />
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div className="dm-name ellipsis1">{m.name}</div>
-                      <div className="flex mt4">
-                        <span className={`badge ${m.mentorInfo?.level.includes('高级') ? 'badge-senior' : 'badge-cert'}`}>
-                          <Icon name="shield" size={8} /> {m.mentorInfo?.level.split('（')[0]}
-                        </span>
+            {mentors.length === 0 ? (
+              <div className="card">
+                <EmptyState title="暂无可推荐导师" desc="共享 API 当前未返回导师榜单或导师档案。" icon="grad" />
+              </div>
+            ) : (
+              <div className="d-mentor-grid">
+                {mentors.map((m) => (
+                  <div
+                    key={m.id}
+                    className="d-mentor"
+                    style={mentors.length === 1 ? { gridColumn: '1 / -1' } : undefined}
+                    onClick={() => nav(m.hasProfile ? `/mentor/${m.id}` : '/mentorship')}
+                  >
+                    <div className="dm-top">
+                      <Avatar name={m.name} color={m.color} size="md" photo={m.photo} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div className="dm-name ellipsis1">{m.name}</div>
+                        <div className="flex mt4">
+                          <span className={`badge ${m.level?.includes('高级') ? 'badge-senior' : m.level ? 'badge-cert' : 'badge-blue'}`}>
+                            <Icon name="shield" size={8} />{' '}
+                            {m.level?.split('（')[0] || (m.source === 'mentorship' ? '师徒导师' : '导师')}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <div className="dm-spec ellipsis1">
+                      {m.title || (m.source === 'mentorship' ? '与你建立师徒关系' : '导师')}
+                    </div>
+                    {m.hasProfile ? (
+                      <MentorFollow id={m.id} />
+                    ) : (
+                      <button
+                        className="dm-follow-btn"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          nav('/mentorship')
+                        }}
+                      >
+                        查看师徒
+                      </button>
+                    )}
                   </div>
-                  <div className="dm-spec ellipsis1">{m.title}</div>
-                  <MentorFollow id={m.id} />
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
+            {mentors.length > 0 && mentors.every((m) => m.source === 'mentorship') && (
+              <div className="demo-strip">服务端暂无导师榜数据，以下展示与当前账号有师徒关系的导师。</div>
+            )}
           </>
         )}
 

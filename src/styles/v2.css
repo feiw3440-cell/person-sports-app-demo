@@ -1658,3 +1658,8 @@
   line-height: 17px;
   text-align: center;
 }
+/* 窄容器保护：IAB 侧栏占用视口时保持 APP 最小可用宽度 */
+.shell {
+  width: 100%;
+  min-width: 360px;
+}

@@ -311,6 +311,8 @@ export function RankRowView({ row, rank, category }: { row: RankRow; rank: numbe
   const e = row.entity
   const isPerson = category === 'athlete' || category === 'mentor'
   const u = isPerson ? userById(e.id) : undefined
+  // 服务端榜单实体往往没有本地公开档案：优先使用服务端真实名称，绝不回退到静态 RANK_POOL
+  const displayName = e.name || rowName(e.id, category)
   const delta = row.delta
   const deltaEl =
     delta > 0 ? (
@@ -327,13 +329,11 @@ export function RankRowView({ row, rank, category }: { row: RankRow; rank: numbe
       {u ? (
         <Avatar name={u.name} color={u.color} size="md" />
       ) : (
-        <div className="msg-icon" style={{ background: 'linear-gradient(135deg,#12345B,#2872B8)', width: 44, height: 44, borderRadius: 14 }}>
-          <Icon name={categoryIcon(category)} size={20} />
-        </div>
+        <Avatar name={displayName} color="#2872B8" size="md" />
       )}
       <div className="rank-main">
         <div className="rank-name-row">
-          <span className="rank-name ellipsis1">{rowName(e.id, category)}</span>
+          <span className="rank-name ellipsis1">{displayName}</span>
           {u && <VerifyBadge verify={u.verify} appeal={e.appeal} />}
           {category === 'mentor' && u?.mentorInfo && (
             <span className="badge badge-brand">{u.mentorInfo.level.split('（')[0]}</span>

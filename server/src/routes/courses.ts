@@ -24,7 +24,11 @@ function courseOut(id: string): Record<string, unknown> | undefined {
   const projects = db.prepare('SELECT s.id, s.name FROM course_project_links l JOIN sports_projects s ON s.id = l.project_id WHERE l.course_id = ?').all(id)
   const mentor = db.prepare('SELECT display_name FROM accounts WHERE id = ?').get(row.mentor_account_id as string) as { display_name: string } | undefined
   const org = row.org_id ? (db.prepare('SELECT name FROM organizations WHERE id = ?').get(row.org_id as string) as { name: string } | undefined) : null
-  return { ...row, outline: row.outline ? JSON.parse(row.outline as string) : [], projects, mentor_name: mentor?.display_name, org_name: org?.name ?? null }
+  return {
+    ...row, outline: row.outline ? JSON.parse(row.outline as string) : [], projects,
+    project_ids: (projects as { id: string }[]).map((p) => p.id),
+    mentor_name: mentor?.display_name, org_name: org?.name ?? null,
+  }
 }
 
 export async function courseRoutes(app: FastifyInstance): Promise<void> {

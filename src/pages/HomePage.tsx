@@ -1,13 +1,26 @@
 // 首页 v2：一比一还原高保真原型（蓝白国际体育科技风）
 // 结构：品牌顶栏 → 主视觉 Banner → 快捷入口 → 项目发现三卡 → TOP 榜单预览卡 → 赛事宣传
+// 项目卡按项目名称关联服务端项目 ID（Mock 模式同样可用）
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MESSAGES, SELF_ID, userById } from '../data/db'
+import { DATA_SOURCE, MESSAGES, PROJECTS, SELF_ID, userById } from '../data/db'
+import { rankingRows } from '../data/rankings'
 import { buildRanking } from '../services/api'
 import { currentRole, useApp } from '../store/store'
 import type { RankMode } from '../types'
 import Icon from '../components/Icon'
-import { Avatar, BrandLogo, FlameGlyph, MockFooter, QuickGlyph, RankMedal } from '../components/ui'
+import { Avatar, BrandLogo, EmptyState, FlameGlyph, MockFooter, QuickGlyph, RankMedal } from '../components/ui'
+
+type PreviewRow = {
+  id: string
+  name: string
+  color: string
+  photo?: string
+  title: string
+  score: number
+  delta: number
+  hasProfile: boolean
+}
 
 const MODES: { key: RankMode; label: string }[] = [
   { key: 'overall', label: '综合榜' },
@@ -24,22 +37,52 @@ const QUICK: { glyph: 'top' | 'video' | 'event' | 'athlete' | 'mentor'; label: s
 ]
 
 const PROJECT_CARDS = [
-  { img: 'img/home_swim.jpg', pid: 'p4' },
-  { img: 'img/home_wrestle.jpg', pid: 'p1' },
-  { img: 'img/home_fence.jpg', pid: 'p7' },
+  { img: 'img/home_swim.jpg', name: '游泳' },
+  { img: 'img/home_wrestle.jpg', name: '摔跤' },
+  { img: 'img/home_fence.jpg', name: '击剑' },
 ]
 
 export default function HomePage() {
   const nav = useNavigate()
   const [mode, setMode] = useState<RankMode>('overall')
   const readMsgs = useApp((s) => s.readMsgs)
-  const me = userById(SELF_ID)!
+  const me = userById(SELF_ID)
   const role = currentRole()
   void role
 
   const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).length
-  // 综合分（演示）= 榜单得分 ×100，与原型数字一致
-  const preview = useMemo(() => buildRanking('athlete', mode, { period: 'total' }).rows.slice(0, 3), [mode])
+  // API 模式：服务端榜单为权威数据，人员档案只用于补充头像/头衔；缺失时使用榜单行名称兜底
+  // Mock 模式：仍使用本地演示榜单（仅开发隔离）
+  const preview = useMemo<PreviewRow[]>(() => {
+    if (DATA_SOURCE === 'mock') {
+      return buildRanking('athlete', mode, { period: 'total' }).rows.slice(0, 3).map((row) => {
+        const user = userById(row.entity.id)
+        return {
+          id: row.entity.id,
+          name: user?.name || '运动员',
+          color: user?.color || '#2872B8',
+          photo: user?.photo,
+          title: (user?.title || '运动员').replace('运动员', '').trim() || '运动员',
+          score: mode === 'overall' ? Math.floor(row.score * 100) : row.score,
+          delta: row.delta,
+          hasProfile: !!user,
+        }
+      })
+    }
+    return rankingRows('athlete', mode).slice(0, 3).map((row) => {
+      const user = userById(row.entity_id)
+      return {
+        id: row.entity_id,
+        name: user?.name || row.name,
+        color: user?.color || '#2872B8',
+        photo: user?.photo,
+        title: (user?.title || '运动员').replace('运动员', '').trim() || '运动员',
+        score: row.score,
+        delta: row.delta,
+        hasProfile: !!user,
+      }
+    })
+  }, [mode])
 
   return (
     <>
@@ -57,7 +100,7 @@ export default function HomePage() {
           {unread > 0 && <span className="rb">{unread}</span>}
         </button>
         <button onClick={() => nav('/me')} aria-label="我的" style={{ flex: 'none' }}>
-          <Avatar name={me.name} color={me.color} size="sm" photo={me.photo} />
+          <Avatar name={me?.name || '我'} color={me?.color || '#2872B8'} size="sm" photo={me?.photo} />
         </button>
       </div>
 
@@ -94,11 +137,18 @@ export default function HomePage() {
           </button>
         </div>
         <div className="proj-photo-grid">
-          {PROJECT_CARDS.map((c) => (
-            <button key={c.pid} className="proj-photo" onClick={() => nav(`/project/${c.pid}`)}>
-              <img src={c.img} alt="体育项目" />
-            </button>
-          ))}
+          {PROJECT_CARDS.map((c) => {
+            const project = PROJECTS.find((p) => p.name === c.name)
+            return (
+              <button
+                key={c.name}
+                className="proj-photo"
+                onClick={project ? () => nav(`/project/${project.id}`) : undefined}
+              >
+                <img src={c.img} alt={c.name} />
+              </button>
+            )
+          })}
         </div>
 
         {/* TOP 榜单预览卡 */}
@@ -120,30 +170,35 @@ export default function HomePage() {
               </button>
             ))}
           </div>
-          <div className="rank-preview">
-            {preview.map((r, i) => {
-              const u = userById(r.entity.id)
-              return (
-                <div key={r.entity.id} className="rp-row" onClick={() => nav(`/athlete/${r.entity.id}`)}>
+          {preview.length === 0 ? (
+            <EmptyState title="暂无榜单数据" desc="共享 API 尚未返回该榜单快照。" icon="trophy" />
+          ) : (
+            <div className="rank-preview">
+              {preview.map((r, i) => (
+                <div
+                  key={r.id}
+                  className="rp-row"
+                  onClick={() => nav(r.hasProfile ? `/athlete/${r.id}` : '/top/rank/athlete')}
+                >
                   <RankMedal rank={(i + 1) as 1 | 2 | 3} size={30} />
-                  {u && <Avatar name={u.name} color={u.color} size="md" photo={u.photo} />}
+                  <Avatar name={r.name} color={r.color} size="md" photo={r.photo} />
                   <div style={{ minWidth: 0 }}>
                     <div className="t-title" style={{ fontSize: 14.5 }}>
-                      {u?.name}
+                      {r.name}
                     </div>
-                    <div className="t-mini mt4 ellipsis1">{(u?.title || '').replace('运动员', '').trim()}</div>
+                    <div className="t-mini mt4 ellipsis1">{r.title}</div>
                   </div>
                   <div className="rp-score">
                     <div className="s">
                       <b>{mode === 'popularity' ? '人气值' : mode === 'pro' ? '专业分' : '综合分'}</b>
-                      {mode === 'overall' ? Math.floor(r.score * 100) : r.score}
+                      {r.score}
                     </div>
                   </div>
                   <span className="delta-red">{r.delta > 0 ? `▲${r.delta}` : r.delta < 0 ? `▼${-r.delta}` : '—'}</span>
                 </div>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* 赛事宣传 Banner */}

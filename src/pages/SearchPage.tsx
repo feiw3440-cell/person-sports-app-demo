@@ -1,12 +1,27 @@
 // 全局搜索页：同一关键词按类型分栏查看（PRD §5.2，避免只返回视频）
-import { useMemo, useState } from 'react'
+// A2-N6：API 模式走服务端 /v1/search（草稿过滤等权限规则在服务端生效）；Mock 模式回退本地过滤
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { HOT_KEYWORDS, searchAll } from '../services/api'
+import { api } from '../services/apiClient'
+import { DATA_SOURCE } from '../data/db'
+import { mapProjects, mapContents, mapPeople, mapCourses, mapCompetitions, mapOrganizations } from '../services/mapping'
 import Icon from '../components/Icon'
 import { CourseRow, EventRow, OrgRow, PersonRow, ProjectBanner, ContentRow } from '../components/cards'
 import { EmptyState } from '../components/ui'
+import type { SportsProject, ContentItem, User, Course, Competition, Organization } from '../types'
 
 type Scope = 'all' | 'project' | 'content' | 'athlete' | 'mentor' | 'course' | 'event' | 'org'
+
+type SearchResults = {
+  projects: SportsProject[]
+  contents: ContentItem[]
+  athletes: User[]
+  mentors: User[]
+  courses: Course[]
+  events: Competition[]
+  orgs: Organization[]
+}
 
 const SCOPES: { key: Scope; label: string }[] = [
   { key: 'all', label: '全部' },
@@ -19,13 +34,69 @@ const SCOPES: { key: Scope; label: string }[] = [
   { key: 'org', label: '机构/场馆' },
 ]
 
+const EMPTY: SearchResults = { projects: [], contents: [], athletes: [], mentors: [], courses: [], events: [], orgs: [] }
+
 export default function SearchPage() {
   const nav = useNavigate()
   const [q, setQ] = useState('')
   const [scope, setScope] = useState<Scope>('all')
-  const results = useMemo(() => searchAll(q), [q])
+  const [results, setResults] = useState<SearchResults>(EMPTY)
+  const [searching, setSearching] = useState(false)
+  const [searchErr, setSearchErr] = useState('')
 
-  const show = (s: Scope) => scope === 'all' || scope === s
+  // A2-N6：API 模式走服务端搜索（权限/草稿过滤在服务端生效）；Mock 模式回退本地过滤
+  useEffect(() => {
+    const kw = q.trim()
+    if (DATA_SOURCE === 'mock' || !kw) {
+      setResults(EMPTY)
+      setSearching(false)
+      setSearchErr('')
+      return
+    }
+    let removed = false
+    setSearching(true)
+    setSearchErr('')
+    api<{
+      data: {
+        projects: Record<string, unknown>[]
+        contents: Record<string, unknown>[]
+        people: Record<string, unknown>[]
+        courses: Record<string, unknown>[]
+        competitions: Record<string, unknown>[]
+        organizations: Record<string, unknown>[]
+      }
+    }>('GET', `/search?q=${encodeURIComponent(kw)}`)
+      .then((res) => {
+        if (removed) return
+        const d = res.data
+        const projectColor = new Map<string, [string, string]>()
+        const projects = mapProjects(d.projects as Record<string, unknown>[])
+        projects.forEach((p) => projectColor.set(p.id, [p.colorA, p.colorB]))
+        const contents = mapContents(d.contents as Record<string, unknown>[], projectColor)
+        const people = mapPeople(d.people as Record<string, unknown>[], {})
+        setResults({
+          projects,
+          contents,
+          athletes: people.people.filter((u) => u.kind === 'athlete'),
+          mentors: people.people.filter((u) => u.kind !== 'athlete'),
+          courses: mapCourses(d.courses as Record<string, unknown>[], new Map()),
+          events: mapCompetitions(d.competitions as Record<string, unknown>[]),
+          orgs: mapOrganizations(d.organizations as Record<string, unknown>[]),
+        })
+        setSearching(false)
+      })
+      .catch((e) => {
+        if (removed) return
+        setResults(EMPTY)
+        setSearching(false)
+        setSearchErr(e instanceof Error ? e.message : '搜索失败')
+      })
+    return () => {
+      removed = true
+    }
+  }, [q])
+
+  const isFeed = DATA_SOURCE === 'api' && searching
   const total =
     results.projects.length +
     results.contents.length +
@@ -34,6 +105,8 @@ export default function SearchPage() {
     results.courses.length +
     results.events.length +
     results.orgs.length
+
+  const show = (s: Scope) => scope === 'all' || scope === s
 
   return (
     <>
@@ -101,103 +174,111 @@ export default function SearchPage() {
               })}
             </div>
 
-            {total === 0 && (
-              <EmptyState
-                title={`未找到与「${q}」相关的内容`}
-                desc="换个关键词试试，比如「摔跤」「训练营」「上海」（演示数据范围有限）。"
-                icon="search"
-              />
-            )}
+            {searching ? (
+              <EmptyState title="搜索中…" desc="正在从共享 API 检索。" icon="search" />
+            ) : searchErr ? (
+              <EmptyState title={`搜索失败：${searchErr}`} desc="请稍后重试（共享 API 检索）。" icon="flash" />
+            ) : (
+              <>
+                {total === 0 && (
+                  <EmptyState
+                    title={`未找到与「${q}」相关的内容`}
+                    desc="换个关键词试试，比如「摔跤」「训练营」「上海」（演示数据范围有限）。"
+                    icon="search"
+                  />
+                )}
 
-            {show('project') && results.projects.length > 0 && (
-              <div className="section">
-                <div className="sec-head">
-                  <div className="sec-title">体育项目 · {results.projects.length}</div>
-                </div>
-                <div className="list">
-                  {results.projects.map((p) => (
-                    <ProjectBanner key={p.id} p={p} onClick={() => nav(`/project/${p.id}`)} />
-                  ))}
-                </div>
-              </div>
-            )}
+                {show('project') && results.projects.length > 0 && (
+                  <div className="section">
+                    <div className="sec-head">
+                      <div className="sec-title">体育项目 · {results.projects.length}</div>
+                    </div>
+                    <div className="list">
+                      {results.projects.map((p) => (
+                        <ProjectBanner key={p.id} p={p} onClick={() => nav(`/project/${p.id}`)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {show('content') && results.contents.length > 0 && (
-              <div className="section">
-                <div className="sec-head">
-                  <div className="sec-title">视频 / 图文 · {results.contents.length}</div>
-                </div>
-                <div className="list">
-                  {results.contents.map((c) => (
-                    <ContentRow key={c.id} c={c} />
-                  ))}
-                </div>
-              </div>
-            )}
+                {show('content') && results.contents.length > 0 && (
+                  <div className="section">
+                    <div className="sec-head">
+                      <div className="sec-title">视频 / 图文 · {results.contents.length}</div>
+                    </div>
+                    <div className="list">
+                      {results.contents.map((c) => (
+                        <ContentRow key={c.id} c={c} />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {show('athlete') && results.athletes.length > 0 && (
-              <div className="section">
-                <div className="sec-head">
-                  <div className="sec-title">运动员 · {results.athletes.length}</div>
-                </div>
-                <div className="list">
-                  {results.athletes.map((u) => (
-                    <PersonRow key={u.id} u={u} onClick={() => nav(`/athlete/${u.id}`)} />
-                  ))}
-                </div>
-              </div>
-            )}
+                {show('athlete') && results.athletes.length > 0 && (
+                  <div className="section">
+                    <div className="sec-head">
+                      <div className="sec-title">运动员 · {results.athletes.length}</div>
+                    </div>
+                    <div className="list">
+                      {results.athletes.map((u) => (
+                        <PersonRow key={u.id} u={u} onClick={() => nav(`/athlete/${u.id}`)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {show('mentor') && results.mentors.length > 0 && (
-              <div className="section">
-                <div className="sec-head">
-                  <div className="sec-title">教练 / 导师 · {results.mentors.length}</div>
-                </div>
-                <div className="list">
-                  {results.mentors.map((u) => (
-                    <PersonRow key={u.id} u={u} onClick={() => nav(`/mentor/${u.id}`)} />
-                  ))}
-                </div>
-              </div>
-            )}
+                {show('mentor') && results.mentors.length > 0 && (
+                  <div className="section">
+                    <div className="sec-head">
+                      <div className="sec-title">教练 / 导师 · {results.mentors.length}</div>
+                    </div>
+                    <div className="list">
+                      {results.mentors.map((u) => (
+                        <PersonRow key={u.id} u={u} onClick={() => nav(`/mentor/${u.id}`)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {show('course') && results.courses.length > 0 && (
-              <div className="section">
-                <div className="sec-head">
-                  <div className="sec-title">课程 · {results.courses.length}</div>
-                </div>
-                <div className="list">
-                  {results.courses.map((k) => (
-                    <CourseRow key={k.id} k={k} />
-                  ))}
-                </div>
-              </div>
-            )}
+                {show('course') && results.courses.length > 0 && (
+                  <div className="section">
+                    <div className="sec-head">
+                      <div className="sec-title">课程 · {results.courses.length}</div>
+                    </div>
+                    <div className="list">
+                      {results.courses.map((k) => (
+                        <CourseRow key={k.id} k={k} />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {show('event') && results.events.length > 0 && (
-              <div className="section">
-                <div className="sec-head">
-                  <div className="sec-title">赛事 · {results.events.length}</div>
-                </div>
-                <div className="list">
-                  {results.events.map((e) => (
-                    <EventRow key={e.id} e={e} />
-                  ))}
-                </div>
-              </div>
-            )}
+                {show('event') && results.events.length > 0 && (
+                  <div className="section">
+                    <div className="sec-head">
+                      <div className="sec-title">赛事 · {results.events.length}</div>
+                    </div>
+                    <div className="list">
+                      {results.events.map((e) => (
+                        <EventRow key={e.id} e={e} />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {show('org') && results.orgs.length > 0 && (
-              <div className="section">
-                <div className="sec-head">
-                  <div className="sec-title">学校 / 俱乐部 / 场馆 · {results.orgs.length}</div>
-                </div>
-                <div className="list">
-                  {results.orgs.map((o) => (
-                    <OrgRow key={o.id} o={o} />
-                  ))}
-                </div>
-              </div>
+                {show('org') && results.orgs.length > 0 && (
+                  <div className="section">
+                    <div className="sec-head">
+                      <div className="sec-title">学校 / 俱乐部 / 场馆 · {results.orgs.length}</div>
+                    </div>
+                    <div className="list">
+                      {results.orgs.map((o) => (
+                        <OrgRow key={o.id} o={o} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

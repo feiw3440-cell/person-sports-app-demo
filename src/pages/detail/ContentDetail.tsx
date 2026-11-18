@@ -1,4 +1,5 @@
 // 内容详情：视频/图文占位 + 作者 + 互动 + 评论示例（PRD §5.4）
+// 作者可能是账号 ID，缺少公开档案时使用服务端作者名兜底
 import { useParams } from 'react-router-dom'
 import { useNavigate } from 'react-router-dom'
 import { contentById, projectById, userById } from '../../data/db'
@@ -28,6 +29,7 @@ export default function ContentDetail() {
 
   if (!c) return <EmptyState title="内容不存在" desc="演示数据中未找到该内容。" />
   const author = userById(c.authorId)
+  const authorName = author?.name || c.authorName || '内容作者'
   const project = projectById(c.projectId)
   const likeOn = !!likes[c.id]
   const favOn = !!favs[c.id]
@@ -80,16 +82,19 @@ export default function ContentDetail() {
         </div>
 
         {/* 作者卡 */}
-        <div className="row-item mt12" onClick={() => nav(author?.kind === 'mentor' ? `/mentor/${author.id}` : `/athlete/${author.id}`)}>
-          <Avatar name={author?.name || '?'} color={author?.color || '#12345B'} />
+        <div
+          className="row-item mt12"
+          onClick={author ? () => nav(author.kind === 'mentor' ? `/mentor/${author.id}` : `/athlete/${author.id}`) : undefined}
+        >
+          <Avatar name={authorName} color={author?.color || '#12345B'} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="flex gap6">
-              <span className="t-title">{author?.name}</span>
-              <VerifyBadge verify={author?.verify || 'pending'} />
+              <span className="t-title">{authorName}</span>
+              {author && <VerifyBadge verify={author.verify || 'pending'} />}
               {author?.kind === 'mentor' && <span className="badge badge-brand">认证导师</span>}
             </div>
             <div className="t-mini mt4">
-              {author?.title} · 粉丝 {fmt(author?.followers || 0)}（模拟）
+              {author ? `${author.title} · 粉丝 ${fmt(author.followers || 0)}（模拟）` : '服务端内容作者'}
             </div>
           </div>
           <button

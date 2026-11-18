@@ -38,15 +38,21 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
     const ctx = requireAuth(req)
     const perm = requirePerm(ctx, 'people', 'read')
     const q = req.query as { kind?: string; keyword?: string; project_id?: string; org_id?: string; verify?: string; page?: string; page_size?: string }
-    const page = Number(q.page || 1)
-    const pageSize = Math.min(Number(q.page_size || 20), 100)
+    const toPositiveInt = (value: string | undefined, name: string, fallback: number): number => {
+      if (value === undefined || value === '') return fallback
+      const n = Number(value)
+      if (!Number.isInteger(n) || n < 1) throw err.validation(`${name} 必须为正整数`)
+      return n
+    }
+    const page = toPositiveInt(q.page, 'page', 1)
+    const pageSize = Math.min(toPositiveInt(q.page_size, 'page_size', 20), 100)
     const viewerRoles = rolesOf(ctx)
     const where: string[] = []
     const args: unknown[] = []
     if (q.kind) { where.push('p.kind = ?'); args.push(q.kind) }
     if (q.verify) { where.push('p.verify_status = ?'); args.push(q.verify) }
     if (q.keyword) {
-      where.push('(a.display_name LIKE ? OR IFNULL(p.title,"") LIKE ? OR IFNULL(p.region,"") LIKE ?)')
+      where.push("(a.display_name LIKE ? OR IFNULL(p.title, '') LIKE ? OR IFNULL(p.region, '') LIKE ?)")
       const kw = `%${q.keyword}%`
       args.push(kw, kw, kw)
     }

@@ -7,7 +7,6 @@ import { EmptyState, MockFooter } from '../../components/ui'
 
 export default function MentorshipPage() {
   const nav = useNavigate()
-  const me = userById(SELF_ID)!
 
   const asStudent = MENTORSHIPS.filter((ms) => ms.menteeId === SELF_ID && ms.role === 'student')
   const asCoach = MENTORSHIPS.filter((ms) => ms.menteeId === SELF_ID && ms.role === 'coach')
@@ -32,7 +31,10 @@ export default function MentorshipPage() {
 
         {/* 作为学员（徒弟） */}
         {asStudent.map((ms) => {
-          const mentor = userById(ms.mentorId)!
+          const mentor = userById(ms.mentorId)
+          const mentorName = mentor?.name || ms.mentorName || '导师'
+          const mentorColor = mentor?.color || '#12345B'
+          const mentorTitle = mentor?.title || '导师'
           const az = authOf(ms.id)
           return (
             <div key={ms.id} className="card mt12">
@@ -42,20 +44,24 @@ export default function MentorshipPage() {
                 </div>
                 <span className="badge badge-verified">关系有效（演示）</span>
               </div>
-              <div className="row-item mt12" style={{ boxShadow: 'none', border: '1px solid var(--line)' }} onClick={() => nav(`/mentor/${mentor.id}`)}>
-                <div className="avatar avatar-md" style={{ background: `linear-gradient(135deg, ${mentor.color}, ${mentor.color}CC)` }}>
-                  {mentor.name.slice(0, 1)}
+              <div
+                className="row-item mt12"
+                style={{ boxShadow: 'none', border: '1px solid var(--line)' }}
+                onClick={mentor ? () => nav(`/mentor/${mentor.id}`) : undefined}
+              >
+                <div className="avatar avatar-md" style={{ background: `linear-gradient(135deg, ${mentorColor}, ${mentorColor}CC)` }}>
+                  {mentorName.slice(0, 1)}
                 </div>
                 <div style={{ flex: 1 }}>
                   <div className="flex gap6">
-                    <span className="t-title">{mentor.name}</span>
+                    <span className="t-title">{mentorName}</span>
                     <span className="badge badge-brand">认证导师</span>
                   </div>
                   <div className="t-mini mt4">
-                    {mentor.title} · 建立时间 {ms.since}
+                    {mentorTitle} · 建立时间 {ms.since}
                   </div>
                 </div>
-                <Icon name="arrow-r" size={16} style={{ color: 'var(--ink-3)' }} />
+                {mentor && <Icon name="arrow-r" size={16} style={{ color: 'var(--ink-3)' }} />}
               </div>
               {az && (
                 <button className="btn btn-ghost btn-sm btn-block mt12" onClick={() => nav(`/authorization/${az.id}`)}>
@@ -68,7 +74,10 @@ export default function MentorshipPage() {
 
         {/* 作为授权教练 */}
         {asCoach.map((ms) => {
-          const mentor = userById(ms.mentorId)!
+          const mentor = userById(ms.mentorId)
+          const mentorName = mentor?.name || ms.mentorName || '导师'
+          const mentorColor = mentor?.color || '#12345B'
+          const mentorTitle = mentor?.title || '导师'
           const az = authOf(ms.id)
           const myStudents = MENTORSHIPS.filter((x) => x.mentorId === SELF_ID)
           return (
@@ -80,17 +89,21 @@ export default function MentorshipPage() {
                 {az && <span className={`badge ${az.status === '生效中' ? 'badge-verified' : 'badge-unverified'}`}>授权{az.status}（演示）</span>}
               </div>
               <div className="t-sub mt8">
-                获 {mentor.name} 授权开展教学；授权链路：导师 → 授权教练 → 学员。
+                获 {mentorName} 授权开展教学；授权链路：导师 → 授权教练 → 学员。
               </div>
-              <div className="row-item mt12" style={{ boxShadow: 'none', border: '1px solid var(--line)' }} onClick={() => nav(`/mentor/${mentor.id}`)}>
-                <div className="avatar avatar-md" style={{ background: `linear-gradient(135deg, ${mentor.color}, ${mentor.color}CC)` }}>
-                  {mentor.name.slice(0, 1)}
+              <div
+                className="row-item mt12"
+                style={{ boxShadow: 'none', border: '1px solid var(--line)' }}
+                onClick={mentor ? () => nav(`/mentor/${mentor.id}`) : undefined}
+              >
+                <div className="avatar avatar-md" style={{ background: `linear-gradient(135deg, ${mentorColor}, ${mentorColor}CC)` }}>
+                  {mentorName.slice(0, 1)}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div className="t-title">{mentor.name}</div>
-                  <div className="t-mini mt4">授权方 · {mentor.title}</div>
+                  <div className="t-title">{mentorName}</div>
+                  <div className="t-mini mt4">授权方 · {mentorTitle}</div>
                 </div>
-                <Icon name="arrow-r" size={16} style={{ color: 'var(--ink-3)' }} />
+                {mentor && <Icon name="arrow-r" size={16} style={{ color: 'var(--ink-3)' }} />}
               </div>
               {az && (
                 <div className="mt12">
@@ -98,16 +111,18 @@ export default function MentorshipPage() {
                     我名下学员 {myStudents.length} 位（含链路授权）：
                   </div>
                   {myStudents.map((s) => {
-                    const st = userById(s.menteeId)!
+                    const st = userById(s.menteeId)
+                    const stName = st?.name || s.menteeName || '学员'
+                    const stColor = st?.color || '#2872B8'
                     const saz = authOf(s.id)
                     return (
                       <div key={s.id} className="row-item mb8" style={{ boxShadow: 'none', border: '1px solid var(--line)' }}>
-                        <div className="avatar avatar-sm" style={{ background: `linear-gradient(135deg, ${st.color}, ${st.color}CC)` }}>
-                          {st.name.slice(0, 1)}
+                        <div className="avatar avatar-sm" style={{ background: `linear-gradient(135deg, ${stColor}, ${stColor}CC)` }}>
+                          {stName.slice(0, 1)}
                         </div>
                         <div style={{ flex: 1 }}>
                           <div className="t-title" style={{ fontSize: 13.5 }}>
-                            {st.name}
+                            {stName}
                           </div>
                           <div className="t-mini mt4">{saz ? `授权${saz.status} · ${saz.scope.term}` : '无授权（仅关系）'}</div>
                         </div>
@@ -147,7 +162,8 @@ export default function MentorshipPage() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div className="flex gap6">
                       <span className="t-title" style={{ fontSize: 13.5 }}>
-                        {userById(a.mentorId)?.name} → {userById(a.granteeId)?.name}
+                        {userById(a.mentorId)?.name || a.mentorName || '导师'} →{' '}
+                        {userById(a.granteeId)?.name || a.granteeName || '被授权方'}
                       </span>
                     </div>
                     <div className="t-mini mt4 ellipsis1">

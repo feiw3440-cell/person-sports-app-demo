@@ -13,12 +13,13 @@ function competitionOut(id: string): Record<string, unknown> | undefined {
   const row = db.prepare('SELECT * FROM competitions WHERE id = ?').get(id) as Record<string, unknown> | undefined
   if (!row) return undefined
   const projects = db.prepare('SELECT s.id, s.name FROM competition_project_links l JOIN sports_projects s ON s.id = l.project_id WHERE l.competition_id = ?').all(id)
-  const org = row.organizer_org_id ? (db.prepare('SELECT name FROM organizations WHERE id = ?').get(row.organizer_org_id) as { name: string }) : null
+  const org = row.organizer_org_id ? (db.prepare('SELECT name, region FROM organizations WHERE id = ?').get(row.organizer_org_id) as { name: string; region: string }) : null
   const regCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE competition_id = ? AND status = 'approved'").get(id) as { c: number }
   const pendCount = db.prepare("SELECT COUNT(*) AS c FROM registrations WHERE competition_id = ? AND status = 'pending'").get(id) as { c: number }
   return {
-    ...row, projects, org_name: org?.name ?? null,
-    approved_count: regCount.c, pending_count: pendCount.c,
+    ...row, projects, org_name: org?.name ?? null, organizer_name: org?.name ?? null, region: org?.region ?? '',
+    project_ids: (projects as { id: string }[]).map((p) => p.id),
+    approved_count: regCount.c, pending_count: pendCount.c, enrolled: regCount.c,
   }
 }
 

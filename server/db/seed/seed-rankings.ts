@@ -23,10 +23,10 @@ export function seedRankings(db: DB): void {
 
   type Src = { id: string; name: string; verified: boolean; base: number; extra: string }
 
-  const athletes = (db.prepare("SELECT p.id, a.display_name, p.verify_status, p.region FROM person_profiles p JOIN accounts a ON a.id = p.account_id WHERE p.kind = 'athlete' AND p.status = 'active' ORDER BY p.id").all() as Record<string, string>[]).map((r) => ({
+  const athletes = (db.prepare("SELECT p.id, a.display_name, p.verify_status, p.region FROM person_profiles p JOIN accounts a ON a.id = p.account_id WHERE p.kind = 'athlete' ORDER BY p.id").all() as Record<string, string>[]).map((r) => ({
     id: r.id, name: r.display_name, verified: r.verify_status === 'verified', base: 0, extra: r.region || '',
   }))
-  const mentors = (db.prepare("SELECT p.id, a.display_name, p.verify_status FROM person_profiles p JOIN accounts a ON a.id = p.account_id WHERE p.kind = 'mentor' AND p.status = 'active' ORDER BY p.id").all() as Record<string, string>[]).map((r) => ({
+  const mentors = (db.prepare("SELECT p.id, a.display_name, p.verify_status FROM person_profiles p JOIN accounts a ON a.id = p.account_id WHERE p.kind = 'mentor' ORDER BY p.id").all() as Record<string, string>[]).map((r) => ({
     id: r.id, name: r.display_name, verified: r.verify_status === 'verified', base: 0, extra: '',
   }))
   const projects = (db.prepare("SELECT id, name FROM sports_projects WHERE status = 'active' ORDER BY id").all() as Record<string, string>[]).map((r) => ({

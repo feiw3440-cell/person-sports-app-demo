@@ -16,9 +16,14 @@ function isPlatform(ctx: { accountId: string; identityId?: string }): boolean {
 export async function organizationRoutes(app: FastifyInstance): Promise<void> {
   app.get('/organizations', async (req, reply) => {
     const ctx = requireAuth(req)
+    const decorate = (rows: Record<string, unknown>[]) =>
+      rows.map((r) => ({
+        ...r,
+        project_ids: db.prepare("SELECT project_id FROM project_relations WHERE entity_type = 'org' AND entity_id = ?").all(r.id).map((x) => (x as { project_id: string }).project_id),
+      }))
     if (isPlatform(ctx)) {
-      const rows = db.prepare('SELECT * FROM organizations ORDER BY name').all()
-      return reply.send({ data: rows, meta: { total: rows.length } })
+      const rows = db.prepare('SELECT * FROM organizations ORDER BY name').all() as Record<string, unknown>[]
+      return reply.send({ data: decorate(rows), meta: { total: rows.length } })
     }
     const rows = db
       .prepare(
@@ -26,8 +31,8 @@ export async function organizationRoutes(app: FastifyInstance): Promise<void> {
          FROM memberships m JOIN organizations o ON o.id = m.org_id
          WHERE m.account_id = ? AND m.status IN ('pending','accepted')`,
       )
-      .all(ctx.accountId)
-    return reply.send({ data: rows, meta: { total: rows.length } })
+      .all(ctx.accountId) as Record<string, unknown>[]
+    return reply.send({ data: decorate(rows), meta: { total: rows.length } })
   })
 
   app.get('/organizations/:id', async (req, reply) => {

@@ -4,7 +4,9 @@
 import type { CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MESSAGES, ROLE_LABEL, SELF_ID, userById } from '../data/db'
+// 个人资料页：账号资料可能尚未水合或无公开档案；所有展示名/ID 都必须有兜底，禁止非空断言
 import { currentRole, useApp } from '../store/store'
+import { useSession } from '../services/session'
 import Icon from '../components/Icon'
 import { BrandLogo, FuncGlyph, MockFooter } from '../components/ui'
 import type { FuncGlyphType } from '../components/ui'
@@ -33,10 +35,13 @@ const FUNCS: { glyph: FuncGlyphType; label: string; to?: string; toast?: string 
 
 export default function ProfilePage() {
   const nav = useNavigate()
-  const me = userById(SELF_ID)!
+  const me = userById(SELF_ID)
+  const displayName = me?.name || '未知用户'
+  const displayId = me?.id ? String(me.id) : '未获取'
   const role = currentRole()
   const readMsgs = useApp((s) => s.readMsgs)
   const pushToast = useApp((s) => s.pushToast)
+  const logoutFn = useSession((s) => s.logout)
   const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).reduce((n, m) => n + (m.badge || 1), 0)
 
   return (
@@ -60,13 +65,13 @@ export default function ProfilePage() {
           <img className="me2-avatar" src="img/me_avatar.jpg" alt="头像" />
           <div>
             <div className="me2-name">
-              体育追梦人
+              {displayName}
               <button onClick={() => pushToast('编辑资料为演示原型')} aria-label="编辑">
                 <Icon name="clip" size={15} style={{ opacity: 0.9 }} />
               </button>
             </div>
             <div className="me2-idline">
-              ID：ST20250001
+              ID：{displayId}
               <span className="me2-badge">
                 <Icon name="shield" size={11} /> {ROLE_LABEL[role.type] || role.label}
               </span>
@@ -175,7 +180,15 @@ export default function ProfilePage() {
               <Icon name="arrow-r" size={13} />
             </span>
           </button>
-          <button className="svc-row full" style={{ width: '100%' }} onClick={() => pushToast('演示环境无真实账号体系，退出登录为原型')}>
+          <button
+            className="svc-row full"
+            style={{ width: '100%' }}
+            onClick={async () => {
+              if (!window.confirm('退出登录将撤销当前会话并清理本地令牌与敏感缓存，确定退出？')) return
+              await logoutFn()
+              nav('/login')
+            }}
+          >
             <span className="svc-ic" style={{ background: 'linear-gradient(160deg,#5aa0ff,#2e7cf6)' }}>
               <Icon name="swap" size={19} />
             </span>

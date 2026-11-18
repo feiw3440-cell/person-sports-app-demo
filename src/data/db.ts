@@ -1,6 +1,6 @@
 // 专体 PERSON SPORTS · 本地模拟数据库
 // ⚠️ 全部账号、成绩、认证、排名、互动数据均为“演示模拟数据”，不代表任何真实人物或事实。
-import type {
+import type { RoleType,
   Authorization,
   Competition,
   ContentItem,
@@ -45,7 +45,7 @@ export const ROLES: RoleRecord[] = [
   { id: 'r-admin', type: 'admin', label: '体育管理角色', status: 'active', extra: '授权范围：摔跤/柔道·华东（演示）' },
 ]
 
-export const SELF_ID = 'u0'
+export let SELF_ID = 'u0'
 
 export const ROLE_LABEL: Record<string, string> = {
   regular: '普通用户',
@@ -58,7 +58,12 @@ export const ROLE_LABEL: Record<string, string> = {
 }
 
 /* ============ 用户 ============ */
-export const USERS: User[] = [
+export let ROLES_LIVE: RoleRecord[] = ROLES
+export function setMyRoles(list: RoleRecord[]): void {
+  ROLES_LIVE = list
+}
+
+export let USERS: User[] = [
   {
     id: 'u0',
     name: '阿体',
@@ -312,7 +317,7 @@ export function userById(id: string): User | undefined {
 }
 
 /* ============ 体育项目 ============ */
-export const PROJECTS: SportsProject[] = [
+export let PROJECTS: SportsProject[] = [
   {
     id: 'p1', name: '摔跤', colorA: '#FF6B5E', colorB: '#FF9850', category: '对抗格斗',
     tags: ['力量', '技巧与速度', '竞技'],
@@ -376,7 +381,7 @@ export function projectById(id: string) {
 }
 
 /* ============ 内容 ============ */
-export const CONTENTS: ContentItem[] = [
+export let CONTENTS: ContentItem[] = [
   { id: 'c1', type: 'video', title: '摔跤训练现场：抱腿转移技术拆解', colorA: '#FF6B5E', colorB: '#FF9850', projectId: 'p1', authorId: 'a1', publishAt: '2026-11-10', duration: '08:24', summary: '专业队训练课片段，慢动作拆解抱腿转移的重心与发力顺序。', metrics: m(90, 88, 324000, 42000, 12600, 2100, 0) },
   { id: 'c2', type: 'video', title: '柔道动作拆解：大外刈的三个关键点', colorA: '#19B9AC', colorB: '#0EA5E9', projectId: 'p2', authorId: 'm2', publishAt: '2026-11-08', duration: '12:06', summary: '罗兰导师讲解大外刈的支撑脚、上手控制与转体时机。', metrics: m(88, 82, 218000, 31000, 9800, 1600, 0) },
   { id: 'c3', type: 'article', title: '年轻运动员训练日记：110米栏的365天', colorA: '#8B5CF6', colorB: '#6366F1', projectId: 'p3', authorId: 'a3', publishAt: '2026-11-05', summary: '从冬训到赛季，一名青年跨栏选手的完整训练周期记录。', metrics: m(84, 76, 96000, 12300, 4300, 890, 0) },
@@ -402,7 +407,7 @@ export function contentById(id: string) {
 }
 
 /* ============ 课程 ============ */
-export const COURSES: Course[] = [
+export let COURSES: Course[] = [
   { id: 'k1', name: '摔跤入门：站姿与倒地保护', mentorId: 'm1', projectId: 'p1', format: '线下', audience: '零基础青少年及成人', outline: ['安全倒地与受身', '基础站姿与重心', '基础步伐与距离', '入门技术体验'], status: '报名开放', sessions: '6课时 · 每周六', region: '上海', metrics: m(90, 78, 52000, 3200, 2100, 210, 0), trend: t(1, 2, 1) },
   { id: 'k2', name: '柔道基础技术十二讲', mentorId: 'm2', projectId: 'p2', format: '线上', audience: '有一定基础的学员', outline: ['受身系统复习', '投技五讲', '寝技三讲', '实战复盘两讲', '礼仪与比赛规则'], status: '进行中', sessions: '12讲 · 已更新8讲', region: '线上', metrics: m(86, 74, 88000, 5100, 3600, 420, 0), trend: t(0, 1, 2) },
   { id: 'k3', name: '青少年田径爆发力训练营', mentorId: 'm3', projectId: 'p3', format: '线下', audience: '12-17岁青少年', outline: ['起动技术', '节奏训练', '力量基础', '测试与评估'], status: '招募中', sessions: '寒假集训 · 10天', region: '南京', metrics: m(84, 70, 36000, 2400, 1500, 180, 0), trend: t(2, 1, 1) },
@@ -417,7 +422,7 @@ export function courseById(id: string) {
 }
 
 /* ============ 赛事 ============ */
-export const EVENTS: Competition[] = [
+export let EVENTS: Competition[] = [
   { id: 'e1', name: '全国青年摔跤锦标赛（华东赛区）', projectId: 'p1', date: '2026-12-05 ~ 12-08', location: '上海 · 体育馆（演示地点）', organizer: '演示组委会', intro: '面向18-20岁青年选手的区域选拔赛，设男子/女子多个公斤级（演示赛事，不构成真实报名）。', status: '报名中', quota: 200, enrolled: 128, region: '上海' },
   { id: 'e2', name: '市柔道公开赛 · 秋季', projectId: 'p2', date: '2026-11-28', location: '杭州 · 柔道馆（演示地点）', organizer: '演示组委会', intro: '面向市民与业余选手的公开赛，设多个体重级别与年龄组（演示）。', status: '即将截止', quota: 150, enrolled: 139, region: '杭州' },
   { id: 'e3', name: '城市田径挑战赛', projectId: 'p3', date: '2027-01-16', location: '南京 · 田径场（演示地点）', organizer: '演示组委会', intro: '短跑、跨栏、跳跃等项目的城市挑战赛（演示）。', status: '筹备中', quota: 300, enrolled: 0, region: '南京' },
@@ -431,7 +436,7 @@ export function eventById(id: string) {
 }
 
 /* ============ 机构（学校/俱乐部/场馆） ============ */
-export const ORGS: Organization[] = [
+export let ORGS: Organization[] = [
   {
     id: 'o1', name: '锋跃摔跤俱乐部', type: '俱乐部', colorA: '#FF6B5E', colorB: '#FF9850',
     projectIds: ['p1'], memberIds: ['m1', 'a1'],
@@ -471,14 +476,14 @@ export function orgById(id: string) {
 }
 
 /* ============ 师徒关系与授权（与"身份"分离的数据关系） ============ */
-export const MENTORSHIPS: Mentorship[] = [
+export let MENTORSHIPS: Mentorship[] = [
   { id: 'ms1', mentorId: 'm1', menteeId: 'u0', role: 'student', since: '2026-09（演示）' },
   { id: 'ms2', mentorId: 'm1', menteeId: 'u0', role: 'coach', since: '2026-03（演示）' },
   { id: 'ms3', mentorId: 'u0', menteeId: 's1', role: 'student', since: '2026-08（演示）' },
   { id: 'ms4', mentorId: 'u0', menteeId: 's2', role: 'student', since: '2025-06（演示）' },
 ]
 
-export const AUTHORIZATIONS: Authorization[] = [
+export let AUTHORIZATIONS: Authorization[] = [
   {
     id: 'az1', mentorshipId: 'ms1', mentorId: 'm1', granteeId: 'u0',
     scope: { project: '摔跤', content: '入门课程学习', region: '华东地区', term: '2026-01-01 ~ 2026-12-31' },
@@ -516,7 +521,7 @@ export function authsFor(userId: string) {
 type PoolItem = [string, number, boolean, number, number, number, number, number, number, Trend, boolean?]
 // [id, prof, profVerified, influence, views, likes, favs, comments, follows, delta, appeal?]
 
-export const RANK_POOL: RankEntity[] = [
+export let RANK_POOL: RankEntity[] = [
   // 运动员（原型人物居前：张伟/李娜/王强为综合榜前三演示）
   { id: 'nw1', type: 'athlete', prof: 98.5, profVerified: true, influence: 98.5, views: 1285000, likes: 126000, favs: 38000, comments: 8200, follows: 52000, delta: t(3, 5, 12) },
   { id: 'nw4', type: 'athlete', prof: 97.2, profVerified: true, influence: 97.2, views: 648000, likes: 67000, favs: 21000, comments: 4100, follows: 38000, delta: t(1, 2, 8) },
@@ -582,7 +587,7 @@ export const RANK_POOL: RankEntity[] = [
   { id: 'city-gz', type: 'city', prof: 78, profVerified: true, influence: 72, views: 0, likes: 0, favs: 0, comments: 0, follows: 0, delta: t(0, -1, -1) },
 ]
 
-export const CITY_INFO: Record<string, { name: string; note: string }> = {
+export let CITY_INFO: Record<string, { name: string; note: string }> = {
   'city-sh': { name: '上海', note: '场馆设施·赛事人才综合指数（演示）' },
   'city-bj': { name: '北京', note: '场馆设施·赛事人才综合指数（演示）' },
   'city-hz': { name: '杭州', note: '场馆设施·赛事人才综合指数（演示）' },
@@ -591,10 +596,10 @@ export const CITY_INFO: Record<string, { name: string; note: string }> = {
   'city-gz': { name: '广州', note: '场馆设施·赛事人才综合指数（演示）' },
 }
 
-export const REGIONS = ['上海', '杭州', '南京', '北京', '成都', '广州']
+export let REGIONS = ['上海', '杭州', '南京', '北京', '成都', '广州']
 
 /* ============ 消息（模拟通知，按高保真原型 5 分类 / 12 条） ============ */
-export const MESSAGES: MsgItem[] = [
+export let MESSAGES: MsgItem[] = [
   { id: 'msg1', cat: 'system', kind: 'system', title: '系统通知', body: '平台将于今晚22:00进行系统维护，预计30分钟…', time: '今天 14:30', unread: true, badge: 3, target: '/messages?cat=system' },
   { id: 'msg2', cat: 'interact', kind: 'follow', title: '张伟', body: '我关注了你，希望能一起交流摔跤技术！', time: '今天 13:20', unread: true, badge: 1, avatar: 'img/top_av_1.jpg', verified: true, target: '/athlete/nw1' },
   { id: 'msg3', cat: 'interact', kind: 'like', title: '点赞消息', body: '李娜 赞了你的动态："训练真的很刻苦！"', time: '昨天 20:15', unread: false, target: '/athlete/nw4' },
@@ -628,3 +633,129 @@ export const DISCOVER_MENTORS = ['nm4', 'nm5', 'nm6']
 
 // 发现页内容分类筛选
 export const DISCOVER_CATS = ['奥运项目', '格斗对抗', '田径类', '水上运动']
+
+/* ==================================================================
+ * 数据源水合（一体化改造）：默认从共享 API 拉取并映射为本文件形状；
+ * VITE_DATA_SOURCE=mock 时保留上方静态演示数据（仅开发环境隔离使用）。
+ * 页面组件保持零改动：import 的导出为 ESM 活绑定，hydrate 后自动生效。
+ * ================================================================== */
+import { mapProjects, mapContents, mapPeople, mapCourses, mapCompetitions, mapOrganizations, mapMentorships, mapAuthorizations, mapNotifications } from '../services/mapping'
+
+export const DATA_SOURCE: 'api' | 'mock' = (import.meta.env.VITE_DATA_SOURCE as 'api' | 'mock') || 'api'
+
+/* Mock 快照（首次模块加载时固定，供 resetToMock 恢复） */
+const MOCK = {
+  USERS: [...USERS],
+  PROJECTS: [...PROJECTS],
+  CONTENTS: [...CONTENTS],
+  COURSES: [...COURSES],
+  EVENTS: [...EVENTS],
+  ORGS: [...ORGS],
+  MENTORSHIPS: [...MENTORSHIPS],
+  AUTHORIZATIONS: [...AUTHORIZATIONS],
+  MESSAGES: [...MESSAGES],
+  SELF_ID,
+}
+
+export type ServerPayload = {
+  me: Record<string, unknown>
+  projects: Record<string, unknown>[]
+  contents: Record<string, unknown>[]
+  people: Record<string, unknown>[]
+  courses: Record<string, unknown>[]
+  competitions: Record<string, unknown>[]
+  organizations: Record<string, unknown>[]
+  mentorships: Record<string, unknown>[]
+  authorizations: Record<string, unknown>[]
+  notifications: Record<string, unknown>[]
+  memberships: Record<string, unknown>[]
+  identityTypesByAccount: Record<string, string[]>
+}
+
+/* 演示互动指标生成器暴露给映射层复用 */
+export const demoHash01 = (s: string) => {
+  let h = 0
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) % 9973
+  return h / 9973
+}
+
+/** 用共享 API 数据水合全部导出（服务端为权威数据源） */
+export function hydrateFromServer(p: ServerPayload): void {
+  const me = p.me as Record<string, unknown>
+  const meId = String(me.id)
+  // 身份上下文（服务端权威）：identities + memberships → 客户端呈现用角色列表
+  const rolesBuild: RoleRecord[] = []
+  const seenT = new Set<string>()
+  const mapRoleType = (t: string): RoleType =>
+    t === 'platform_admin' || t === 'platform_ops' || t === 'reviewer' ? 'admin' : (['regular', 'student', 'athlete', 'coach', 'mentor'].includes(t) ? (t as RoleType) : 'regular')
+  for (const it of ((me.identities as { id: string; identity_type: string; label: string; status: string }[]) || [])) {
+    if (seenT.has(it.identity_type)) continue
+    seenT.add(it.identity_type)
+    rolesBuild.push({ id: it.id, type: mapRoleType(it.identity_type), label: it.label || it.identity_type, status: it.status === 'active' ? 'active' : 'pending' })
+  }
+  for (const m of ((p.memberships as { org_id: string; org_name?: string; role: string; status: string }[]) || [])) {
+    if (m.status !== 'accepted') continue
+    rolesBuild.push({ id: 'org_' + m.org_id, type: 'org', label: (m.org_name || '组织') + '·' + (m.role === 'org_admin' ? '管理员' : '成员'), status: 'active' })
+  }
+  setMyRoles(rolesBuild)
+  const mapped = mapPeople(p.people, p.identityTypesByAccount)
+  USERS = mapped.people
+  // A2-N3 去重：登录账号已有公开档案时，直接以该档案为「我的」条目，不再注入重复账号条目
+  const selfProfileId = mapped.profileIdByAccount.get(String((p.me as Record<string, unknown>).id))
+  const projectColor = new Map<string, [string, string]>()
+  PROJECTS = mapProjects(p.projects)
+  PROJECTS.forEach((pr) => projectColor.set(pr.id, [pr.colorA, pr.colorB]))
+  CONTENTS = mapContents(p.contents, projectColor)
+  COURSES = mapCourses(p.courses, mapped.profileIdByAccount)
+  EVENTS = mapCompetitions(p.competitions)
+  ORGS = mapOrganizations(p.organizations, p.memberships, mapped.profileIdByAccount)
+  MENTORSHIPS = mapMentorships(p.mentorships, mapped.profileIdByAccount)
+  AUTHORIZATIONS = mapAuthorizations(p.authorizations)
+  MESSAGES = mapNotifications(p.notifications)
+
+  // 登录账号本体注入 USERS（kind 取身份集合首位；学员账号可能无公开档案）
+  SELF_ID = selfProfileId || meId
+  if (!selfProfileId) {
+    const idTypes: string[] = p.identityTypesByAccount[meId] || ['student']
+    const kind = idTypes.includes('athlete') ? 'athlete' : idTypes.includes('mentor') ? 'mentor' : idTypes.includes('coach') ? 'coach' : 'student'
+    USERS = [
+      ...USERS,
+      {
+        id: meId,
+        name: String(me.display_name || '演示账号'),
+        color: '#2872B8',
+        kind: kind === 'athlete' ? 'athlete' : kind === 'mentor' ? 'mentor' : 'student',
+        roles: idTypes,
+        verify: 'pending',
+        region: '',
+        title: '演示账号',
+        bio: '当前登录的演示账号（共享 API 权威数据）',
+        followers: 0,
+      } as User,
+    ]
+  } else {
+    // 已有档案：更新显示名
+    USERS = USERS.map((u) => (u.id === meId ? { ...u, name: String(me.display_name || u.name) } : u))
+  }
+  REGIONS = [...new Set(PROJECTS.map((pr) => pr.region).filter((r) => r && r !== '全国'))]
+}
+
+/** 恢复静态演示数据（Mock 模式 / 离线兜底） */
+export function resetToMock(): void {
+  USERS = [...MOCK.USERS]
+  PROJECTS = [...MOCK.PROJECTS]
+  CONTENTS = [...MOCK.CONTENTS]
+  COURSES = [...MOCK.COURSES]
+  EVENTS = [...MOCK.EVENTS]
+  ORGS = [...MOCK.ORGS]
+  MENTORSHIPS = [...MOCK.MENTORSHIPS]
+  AUTHORIZATIONS = [...MOCK.AUTHORIZATIONS]
+  MESSAGES = [...MOCK.MESSAGES]
+  SELF_ID = MOCK.SELF_ID
+}
+
+/** 登录账号的 profile id（无公开档案时为空）——供「我的主页」入口判断 */
+export function selfProfileId(): string | null {
+  const me = USERS.find((u) => u.id === SELF_ID)
+  return me && (me.kind === 'athlete' || me.kind === 'mentor') ? me.id : null
+}
