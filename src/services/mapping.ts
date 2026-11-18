@@ -348,6 +348,7 @@ function targetFor(refType: string, refId: string): string | undefined {
     case 'competition': return `/event/${refId}`
     case 'authorization': return `/authorization/${refId}`
     case 'mentorship': return '/mentorship'
+    case 'membership': return '/identity' // 机构邀请：跳身份管理接受/拒绝
     case 'project': return `/project/${refId}`
     case 'profile': return `/athlete/${refId}`
     default: return undefined

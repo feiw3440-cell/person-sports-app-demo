@@ -1,5 +1,5 @@
 // 身份管理：一账号多身份，切换调用服务端 POST /auth/context 真正改变会话上下文
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../services/apiClient'
 import { fetchAllAndHydrate } from '../../services/serverData'
@@ -43,12 +43,13 @@ type IdentityView = {
   enabled: boolean
   extra?: string
   switch?: { identityId?: string; orgId?: string }
+  membershipId?: string
 }
 
 type MeResponse = {
   display_name: string
   identities: { id: string; identity_type: string; label: string; status: string }[]
-  memberships: { org_id: string; org_name?: string; role: string; status: string }[]
+  memberships: { id: string; org_id: string; org_name?: string; role: string; status: string }[]
 }
 
 export default function IdentityPage() {
@@ -61,13 +62,17 @@ export default function IdentityPage() {
   const [me, setMe] = useState<MeResponse | null>(null)
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    let removed = false
+  const loadMe = useCallback((removed: { current: boolean }) => {
     api<{ data: MeResponse }>('GET', '/me')
-      .then((res) => { if (!removed) setMe(res.data) })
-      .catch((e) => { if (!removed) pushToast(`读取身份失败：${e instanceof Error ? e.message : '网络异常'}`) })
-    return () => { removed = true }
+      .then((res) => { if (!removed.current) setMe(res.data) })
+      .catch((e) => { if (!removed.current) pushToast(`读取身份失败：${e instanceof Error ? e.message : '网络异常'}`) })
   }, [pushToast])
+
+  useEffect(() => {
+    const removed = { current: false }
+    loadMe(removed)
+    return () => { removed.current = true }
+  }, [loadMe])
 
   const identities: IdentityView[] = (me?.identities || []).map((i) => ({
     key: i.id,
@@ -85,6 +90,7 @@ export default function IdentityPage() {
       enabled: m.status === 'accepted',
       extra: m.status === 'accepted' ? undefined : '邀请待接受',
       switch: { orgId: m.org_id },
+      membershipId: m.id,
     }))
   const allRoles = [...identities, ...memberships]
   const activeKey = currentRoleId || ''
@@ -100,6 +106,21 @@ export default function IdentityPage() {
       pushToast(`已切换服务端上下文：${r.label}`)
     } else {
       pushToast('身份切换失败，服务端拒绝了上下文变更')
+    }
+    setBusy(false)
+  }
+
+  /** 接受/拒绝机构邀请（POST /v1/memberships/:id/actions，服务端状态机权威） */
+  const decideInvite = async (r: IdentityView, action: 'accept' | 'decline') => {
+    if (!r.membershipId) return
+    setBusy(true)
+    try {
+      await api('POST', `/memberships/${r.membershipId}/actions`, { action })
+      pushToast(action === 'accept' ? `已加入「${r.label}」` : '已拒绝邀请')
+      try { await fetchAllAndHydrate() } catch { /* 刷新失败不阻塞反馈 */ }
+      loadMe({ current: false }) // 页面级 /me 重拉：邀请行状态即时更新（接受后变为可切换身份）
+    } catch (e) {
+      pushToast(`操作失败：${e instanceof Error ? e.message : '网络异常'}`)
     }
     setBusy(false)
   }
@@ -148,6 +169,15 @@ export default function IdentityPage() {
                     <button className="btn btn-sm btn-ghost" onClick={() => nav(ROLE_WORKBENCH[r.type]?.to || '/me')}>
                       {ROLE_WORKBENCH[r.type]?.label || '工作台'}
                     </button>
+                  ) : r.membershipId && !r.enabled ? (
+                    <div className="flex gap6">
+                      <button className="btn btn-sm btn-primary" disabled={busy} onClick={() => void decideInvite(r, 'accept')}>
+                        接受
+                      </button>
+                      <button className="btn btn-sm btn-ghost-gray" disabled={busy} onClick={() => void decideInvite(r, 'decline')}>
+                        拒绝
+                      </button>
+                    </div>
                   ) : (
                     <button className="btn btn-sm btn-primary" disabled={!r.enabled || busy} onClick={() => doSwitch(r)}>
                       切换
