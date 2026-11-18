@@ -1,18 +1,24 @@
 // 导师主页：认证状态（审核来源语义）/ 教学体系 / 课程 / 学员徒弟示例（PRD §5.5 / §7.2）
+// B-⑤：本人导师视角提供「资料可见性」切换（public/private，PATCH /v1/people/:id 服务端权威）
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { AUTHORIZATIONS, COURSES, MENTORSHIPS, projectById, userById } from '../../data/db'
+import { AUTHORIZATIONS, COURSES, DATA_SOURCE, MENTORSHIPS, SELF_ID, projectById, userById } from '../../data/db'
 import { useApp } from '../../store/store'
 import Icon from '../../components/Icon'
 import DetailHeader from '../../components/DetailHeader'
 import { Avatar, Cover, EmptyState, MockFooter, VerifyBadge } from '../../components/ui'
 import { CourseRow, FollowButton, fmt } from '../../components/cards'
 import { contentsByAuthor } from '../../services/api'
+import { api } from '../../services/apiClient'
+import { fetchAllAndHydrate } from '../../services/serverData'
 
 export default function MentorProfile() {
   const { id } = useParams()
   const nav = useNavigate()
   const u = userById(id || '')
   const follows = useApp((s) => s.follows)
+  // B-⑤：本人导师档案（SELF_ID 为登录账号的 profile id）才显示可见性设置
+  const isSelfMentorProfile = DATA_SOURCE === 'api' && !!u && u.id === SELF_ID
 
   if (!u) return <EmptyState title="未找到该导师" />
   if (u.kind === 'athlete') {
@@ -72,6 +78,8 @@ export default function MentorProfile() {
             <FollowButton targetId={u.id} />
           </div>
         </div>
+
+        {isSelfMentorProfile && <VisibilityCard profileId={u.id} visibility={u.visibility === 'private' ? 'private' : 'public'} name={u.name} />}
 
         {u.bio && (
           <div className="card mt12">
@@ -210,4 +218,43 @@ export default function MentorProfile() {
 function projectOfUser(uid: string): string {
   const map: Record<string, string> = { m1: 'p1', m2: 'p2', m3: 'p3', m4: 'p4', m5: 'p5', m6: 'p7' }
   return map[uid] || ''
+}
+
+/** B-⑤：本人导师的档案可见性设置（PATCH /v1/people/:id，服务端权威；private 仅授权关系/组织/平台可见） */
+function VisibilityCard({ profileId, visibility, name }: { profileId: string; visibility: 'public' | 'private'; name: string }) {
+  const pushToast = useApp((s) => s.pushToast)
+  const [vis, setVis] = useState<'public' | 'private'>(visibility)
+  const [busy, setBusy] = useState(false)
+
+  const toggle = useCallback(async () => {
+    const next = vis === 'public' ? 'private' : 'public'
+    setBusy(true)
+    try {
+      await api('PATCH', `/people/${profileId}`, { visibility: next })
+      setVis(next)
+      try { await fetchAllAndHydrate() } catch { /* 水合失败不阻塞反馈 */ }
+      pushToast(next === 'private' ? '资料已设为私有（仅授权学员与所属组织可见）' : '资料已设为公开（登录用户可见）')
+    } catch (e) {
+      pushToast(`设置失败：${e instanceof Error ? e.message : '网络异常'}`)
+    }
+    setBusy(false)
+  }, [vis, profileId, pushToast])
+
+  return (
+    <div className="card mt12">
+      <div className="sec-title" style={{ fontSize: 14, fontWeight: 800, color: 'var(--brand)' }}>资料可见性（本人设置）</div>
+      <div className="kv mt8">
+        <span className="k">
+          <Icon name="shield" size={13} />当前
+        </span>
+        <span className="v">{vis === 'public' ? '公开 · 登录用户可见' : '私有 · 仅授权学员 / 所属组织 / 平台'}</span>
+      </div>
+      <button className="btn btn-sm btn-ghost mt8" disabled={busy} onClick={() => void toggle()}>
+        {busy ? '提交中…' : vis === 'public' ? '设为私有' : '设为公开'}
+      </button>
+      <div className="t-mini mt8">
+        可见性由服务端逐请求检查（GET /v1/people 与 /people/:id 同口径）；设为私有后，非授权关系用户将无法打开{name ? `${name}的档案` : '该档案'}。
+      </div>
+    </div>
+  )
 }

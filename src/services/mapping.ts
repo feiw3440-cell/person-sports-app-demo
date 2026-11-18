@@ -156,6 +156,8 @@ export function mapPeople(
             studentCount: mentorRaw.student_count || 0,
           }
         : undefined,
+      accountId: r.account_id,
+      visibility: r.visibility === 'private' ? 'private' : 'public',
     } as unknown as User
   })
   return { people, profileIdByAccount }

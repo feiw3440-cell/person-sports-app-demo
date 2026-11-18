@@ -42,6 +42,8 @@ export interface User {
     studentCount: number
   }
   orgId?: string
+  accountId?: string // 服务端账号 ID（档案归属；师徒关系/可见性判断用）
+  visibility?: 'public' | 'private' // 档案可见性（B-⑤）：public 登录可见；private 仅授权关系/组织/平台
 }
 
 export interface SportsProject {

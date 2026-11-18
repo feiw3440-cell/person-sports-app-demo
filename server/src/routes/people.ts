@@ -29,9 +29,29 @@ function profileOut(row: ProfileRow, viewerRoles: string[], viewerAccountId: str
     career: row.career ? JSON.parse(row.career) : [],
     mentor_info: row.mentor_info ? JSON.parse(row.mentor_info) : null,
     verify_status: row.verify_status, version: row.version, created_at: row.created_at, updated_at: row.updated_at,
+    visibility: row.visibility || 'public',
     contact_phone: sensitive ? extra?.phone ?? null : null, // 隐私：非授权视角不返回
     display_name: extra?.display_name ?? null, avatar_url: extra?.avatar_url ?? null, login_name: sensitive ? extra?.login_name ?? null : null,
   }
+}
+
+/** 档案可见性（B-⑤）：public（NULL 视同 public）登录即可见；private 仅本人/平台角色/组织管理员（本组织）/师徒 active 关系可见 */
+function canSeePrivateProfile(viewerRoles: string[], viewerAccountId: string, profile: ProfileRow, ctxOrgId: string | null): boolean {
+  if (viewerAccountId === profile.account_id) return true
+  if (viewerRoles.some((r) => ['platform_admin', 'platform_ops', 'reviewer'].includes(r))) return true
+  if (profile.visibility !== 'private') return true
+  if (viewerRoles.includes('org_admin') && ctxOrgId) {
+    const m = db
+      .prepare("SELECT id FROM memberships WHERE account_id = ? AND org_id = ? AND status = 'accepted'")
+      .get(profile.account_id, ctxOrgId)
+    if (m) return true
+  }
+  const rel = db
+    .prepare(
+      "SELECT id FROM mentorships WHERE status = 'active' AND ((mentor_account_id = ? AND mentee_account_id = ?) OR (mentor_account_id = ? AND mentee_account_id = ?))",
+    )
+    .get(profile.account_id, viewerAccountId, viewerAccountId, profile.account_id)
+  return !!rel
 }
 
 export async function peopleRoutes(app: FastifyInstance): Promise<void> {
@@ -61,19 +81,23 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
       where.push('p.id IN (SELECT profile_id FROM profile_project_links WHERE project_id = ?)')
       args.push(q.project_id)
     }
-    // 数据范围裁剪：self → 本人档案；own_org → 本组织成员档案；granted_scope → 师徒/授权范围；platform/all → 全部
+    // 数据范围裁剪（B-⑤ 语义增强）：private 档案仅授权关系/本组织/平台可见；public 档案登录即可见
+    const PUBLIC_VISIBLE = "IFNULL(p.visibility, 'public') = 'public'"
     if (perm.data_scope === 'self') {
-      where.push('p.account_id = ?'); args.push(ctx.accountId)
+      where.push(`(p.account_id = ? OR ${PUBLIC_VISIBLE})`); args.push(ctx.accountId)
     } else if (perm.data_scope === 'own_org') {
       const orgId = q.org_id && q.org_id === ctx.orgId ? ctx.orgId : ctx.orgId
       if (!orgId) return reply.send({ data: [], meta: { total: 0, page, page_size: pageSize } })
-      where.push('p.account_id IN (SELECT account_id FROM memberships WHERE org_id = ? AND status = ?)')
+      where.push(`(p.account_id IN (SELECT account_id FROM memberships WHERE org_id = ? AND status = ?) OR ${PUBLIC_VISIBLE})`)
       args.push(orgId, 'accepted')
     } else if (perm.data_scope === 'granted_scope') {
       const mentees = mentorGrantedAccountIds(ctx)
-      if (mentees.length === 0) return reply.send({ data: [], meta: { total: 0, page, page_size: pageSize } })
-      where.push(`p.account_id IN (${mentees.map(() => '?').join(',')})`)
-      args.push(...mentees)
+      if (mentees.length === 0) {
+        where.push(PUBLIC_VISIBLE)
+      } else {
+        where.push(`(p.account_id IN (${mentees.map(() => '?').join(',')}) OR ${PUBLIC_VISIBLE})`)
+        args.push(...mentees)
+      }
     }
     const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
     const total = db.prepare(`SELECT COUNT(*) AS c FROM person_profiles p JOIN accounts a ON a.id = p.account_id ${whereSql}`).get(...args) as { c: number }
@@ -97,12 +121,9 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
       .prepare('SELECT p.*, a.display_name, a.avatar_url, a.login_name, a.phone FROM person_profiles p JOIN accounts a ON a.id = p.account_id WHERE p.id = ?')
       .get(id) as (ProfileRow & { display_name: string; avatar_url: string | null; login_name: string; phone: string | null }) | undefined
     if (!row) throw err.forbidden()
-    // 资源级归属复核：self / granted_scope / 本组织
-    if (perm.data_scope === 'self' && row.account_id !== ctx.accountId) throw err.forbidden()
-    if (perm.data_scope === 'granted_scope' && !mentorGrantedAccountIds(ctx).includes(row.account_id) && row.account_id !== ctx.accountId) throw err.forbidden()
-    if (perm.data_scope === 'own_org') {
-      const m = db.prepare("SELECT id FROM memberships WHERE account_id = ? AND org_id = ? AND status = 'accepted'").get(row.account_id, ctx.orgId)
-      if (!m) throw err.forbidden()
+    // 可见性（B-⑤）：public 档案登录即可见；private 档案仅本人/平台/师徒 active 关系/本组织管理员
+    if (!canSeePrivateProfile(rolesOf(ctx), ctx.accountId, row, ctx.orgId ?? null)) {
+      throw err.forbidden('该档案已设为私有（仅授权关系与所属组织可见）')
     }
     const projects = db
       .prepare('SELECT s.id, s.name, l.is_primary FROM profile_project_links l JOIN sports_projects s ON s.id = l.project_id WHERE l.profile_id = ?')
@@ -130,10 +151,17 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
       const m = db.prepare("SELECT id FROM memberships WHERE account_id = ? AND org_id = ? AND status = 'accepted'").get(row.account_id, ctx.orgId)
       if (!m) throw err.forbidden()
     }
-    const b = (req.body ?? {}) as { title?: string; bio?: string; region?: string; version?: number }
+    const b = (req.body ?? {}) as { title?: string; bio?: string; region?: string; visibility?: string; version?: number }
     if (typeof b.version === 'number' && b.version !== row.version) throw err.conflict('VERSION_CONFLICT', '档案已被修改，请刷新', { current_version: row.version })
     const fields: Record<string, string | null> = {}
     for (const k of ['title', 'bio', 'region'] as const) if (b[k] !== undefined) fields[k] = String(b[k])
+    // 档案可见性（B-⑤）：仅本人可改，public/private 二态
+    if (b.visibility !== undefined) {
+      if (row.account_id !== ctx.accountId) throw err.forbidden('档案可见性仅本人可修改')
+      const v = String(b.visibility)
+      if (!['public', 'private'].includes(v)) throw err.validation('visibility 仅支持 public/private')
+      fields.visibility = v
+    }
     if (Object.keys(fields).length === 0) throw err.validation('无可更新字段')
     const sets = Object.keys(fields).map((k) => `${k} = @${k}`).join(', ')
     db.prepare(`UPDATE person_profiles SET ${sets}, updated_at = @updated_at, version = version + 1 WHERE id = @id`).run({ ...fields, updated_at: nowISO(), id })
