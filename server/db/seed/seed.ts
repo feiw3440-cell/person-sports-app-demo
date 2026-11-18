@@ -155,6 +155,9 @@ const ROLE_PERMISSIONS: [string, string, string, string][] = [
 ]
 
 export function seed(): void {
+  /* 榜单快照每次 seed 都重算（幂等：全删重建），不依赖账号种子分支 */
+  seedRankings(db)
+
   const existing = (db.prepare('SELECT COUNT(*) AS c FROM accounts').get() as { c: number }).c
   if (existing > 0) {
     console.log('[seed] 已存在账号，跳过种子（如需重置请运行 npm run db:reset）')
@@ -166,7 +169,6 @@ export function seed(): void {
   for (const [role, resource, action, scope] of ROLE_PERMISSIONS) insPerm.run(role, resource, action, scope)
 
   /* ---------- 账号（密码统一 demo1234，仅本地演示） ---------- */
-  seedRankings(db)
   const accAdmin = upsertAccount('admin@local', '平台管理员·谭青', 'demo1234')
   const accOrgAdmin = upsertAccount('orgadmin@local', '锋跃管理员·铁娟', 'demo1234')
   const accMentor = upsertAccount('mentor@local', '导师·徐峰', 'demo1234')
