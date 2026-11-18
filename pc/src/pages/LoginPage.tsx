@@ -119,6 +119,7 @@ function WorkspaceChooser({ orgs, identities, loading, onEnter }: {
   const orgOptions = orgs.map((m) => ({ value: m.org_id as string, label: `${m.org_name}（${m.role === 'org_admin' ? '管理员' : '成员'}）` }))
   const identityOptions = identities.map((i) => ({ value: i.id, label: i.label }))
   const [orgId, setOrgId] = useState<string | null>(orgOptions[0]?.value ?? null)
+  const chosenOrg = orgs.find((m) => m.org_id === orgId)
   const [identityId, setIdentityId] = useState<string | null>(identityOptions[0]?.value ?? null)
   return (
     <>
@@ -134,6 +135,11 @@ function WorkspaceChooser({ orgs, identities, loading, onEnter }: {
       )}
       <Typography.Text type="secondary">当前身份（决定功能与菜单）</Typography.Text>
       <Select style={{ width: '100%', marginTop: 6, marginBottom: 16 }} value={identityId} onChange={setIdentityId} options={identityOptions} />
+      {chosenOrg && (
+        <Typography.Text type="secondary" style={{ fontSize: 12, display: 'block', marginTop: -8, marginBottom: 16 }}>
+          将以「{String(chosenOrg.org_name)}·{String(chosenOrg.role) === 'org_admin' ? '管理员' : '成员'}」上下文进入：数据范围与菜单权限由该组织成员关系决定（账号 identity 为 {identityOptions.find((o) => o.value === identityId)?.label ?? '未选择'}）。
+        </Typography.Text>
+      )}
       <Space direction="vertical" style={{ width: '100%' }}>
         <Button type="primary" block loading={loading} onClick={() => onEnter(orgId, identityId)}>
           进入工作台

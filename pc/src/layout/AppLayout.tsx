@@ -19,7 +19,7 @@ interface Notif { id: string; category: string; kind: string; title: string; bod
 export default function AppLayout() {
   const nav = useNavigate()
   const loc = useLocation()
-  const { me, identityId, orgId, switchContext, setTokens } = useAuth()
+  const { me, identityId, orgId, switchContext, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifs, setNotifs] = useState<Notif[]>([])
@@ -86,13 +86,19 @@ export default function AppLayout() {
     }
   }
 
-  const logout = async () => {
-    setTokens(null)
+  const doLogout = async () => {
+    // 撤销服务端会话 + 清端侧令牌（store.logout），与 APP 登出契约一致
+    await logout()
     nav('/login', { replace: true })
   }
 
   const currentOrg = orgs.find((o: Obj) => o.org_id === orgId)
   const currentIdentity = identities.find((i) => i.id === identityId)
+  // 角色标签由真实身份 + 组织成员关系共同决定（与服务端权限口径一致）：
+  // 有组织上下文时显示机构角色（管理员/成员来自 membership.role），无组织上下文时显示账号 identity
+  const roleTag = currentOrg
+    ? String(currentOrg.role) === 'org_admin' ? '机构管理员' : '机构成员'
+    : currentIdentity?.label
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -154,7 +160,7 @@ export default function AppLayout() {
               <BellOutlined style={{ fontSize: 18 }} onClick={() => setNotifOpen(true)} />
             </Badge>
             {currentOrg && <Tag color="blue">{String(currentOrg.org_name)}</Tag>}
-            {currentIdentity && <Tag>{currentIdentity.label}</Tag>}
+            {roleTag && <Tag color={currentOrg ? 'geekblue' : 'default'}>{roleTag}</Tag>}
             <Dropdown
               menu={{
                 items: [
@@ -164,7 +170,7 @@ export default function AppLayout() {
                 ],
                 onClick: ({ key }) => {
                   if (key === 'settings') nav('/settings')
-                  if (key === 'logout') void logout()
+                  if (key === 'logout') void doLogout()
                 },
               }}
             >

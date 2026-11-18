@@ -6,9 +6,10 @@ import BottomNav from './components/BottomNav'
 import ErrorBoundary from './components/ErrorBoundary'
 import { ToastHost } from './components/ui'
 import Icon from './components/Icon'
-import { DATA_SOURCE } from './data/db'
+import { DATA_SOURCE, ROLES_LIVE } from './data/db'
 import { fetchAllAndHydrate } from './services/serverData'
 import { useSession } from './services/session'
+import { useApp } from './store/store'
 import LoginPage from './pages/LoginPage'
 import HomePage from './pages/HomePage'
 import DiscoverPage from './pages/DiscoverPage'
@@ -114,6 +115,12 @@ function AppGate() {
     setState('loading')
     try {
       await fetchAllAndHydrate()
+      // A2 修复：登录/水合后，把本地角色选择同步到服务端上下文（org 上下文优先匹配 org 角色）
+      const sess = useSession.getState()
+      const roles = ROLES_LIVE
+      const orgRole = sess.orgId ? roles.find((r) => r.id === 'org_' + sess.orgId) : undefined
+      const preferred = orgRole || roles[0]
+      if (preferred) useApp.getState().switchRole(preferred.id)
       setState('ready')
     } catch (e) {
       setErrMsg(e instanceof Error ? e.message : String(e))

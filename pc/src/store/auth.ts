@@ -1,7 +1,7 @@
 // 认证与上下文状态：令牌、账号、当前身份/组织（persist；切换上下文时清空本 store 之外的数据缓存）
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { post, bindTokenProvider, type Obj } from '@/api/client'
+import { post, del, bindTokenProvider, type Obj } from '@/api/client'
 
 interface AuthState {
   access: string
@@ -34,11 +34,11 @@ export const useAuth = create<AuthState>()(
         set({ access: data.access_token, me: data.me, identityId, orgId })
       },
       logout: async () => {
-        const { access, me } = get()
+        const { me } = get()
         try {
-          // 会话撤销（演示：无 sessionId 暴露给客户端，登出仅清端侧令牌；服务端会话由过期/撤销策略管理）
-          void access
-          void me
+          // 撤销服务端会话（与 APP 同一 DELETE /v1/auth/sessions/:id 契约）；失败不阻塞端侧清理
+          const sid = me?.session_id ? String(me.session_id) : ''
+          if (sid) await del(`/auth/sessions/${sid}`).catch(() => {})
         } finally {
           set({ access: '', refresh: '', me: null, identityId: null, orgId: null })
         }

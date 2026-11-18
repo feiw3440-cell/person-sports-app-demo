@@ -695,7 +695,7 @@ export function hydrateFromServer(p: ServerPayload): void {
   }
   for (const m of ((p.memberships as { org_id: string; org_name?: string; role: string; status: string }[]) || [])) {
     if (m.status !== 'accepted') continue
-    rolesBuild.push({ id: 'org_' + m.org_id, type: 'org', label: (m.org_name || '组织') + '·' + (m.role === 'org_admin' ? '管理员' : '成员'), status: 'active' })
+    rolesBuild.push({ id: 'org_' + m.org_id, type: 'org', label: (m.org_name || '组织') + '·' + (m.role === 'org_admin' ? '管理员' : '成员'), status: 'active', extra: m.org_name || '' })
   }
   setMyRoles(rolesBuild)
   const mapped = mapPeople(p.people, p.identityTypesByAccount)
