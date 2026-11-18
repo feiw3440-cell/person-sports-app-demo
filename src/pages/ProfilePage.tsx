@@ -5,7 +5,7 @@ import { useEffect, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DATA_SOURCE, MESSAGES, ROLE_LABEL, SELF_ID, userById } from '../data/db'
 // 个人资料页：账号资料可能尚未水合或无公开档案；所有展示名/ID 都必须有兜底，禁止非空断言
-import { currentRole, useApp } from '../store/store'
+import { currentRole, unreadCount, useApp } from '../store/store'
 import { useSession } from '../services/session'
 import { api } from '../services/apiClient'
 import Icon from '../components/Icon'
@@ -26,6 +26,8 @@ const FUNCS: { glyph: FuncGlyphType; label: string; to?: string; toast?: string 
   { glyph: 'course', label: '我的课程', to: '/list/my-courses' },
   { glyph: 'event', label: '我的赛事', to: '/list/my-events' },
   { glyph: 'favs', label: '我的收藏', to: '/list/my-favs' },
+  { glyph: 'heart', label: '我的关注', to: '/list/my-follows' },
+  { glyph: 'history', label: '浏览历史', to: '/list/my-history' },
   { glyph: 'order', label: '我的订单', toast: '「我的订单」属于未来交易能力，本阶段为原型占位（PRD 范围排除项）' },
   { glyph: 'handshake', label: '我的师徒', to: '/mentorship' },
   { glyph: 'auth', label: '我的授权', to: '/mentorship' },
@@ -43,7 +45,7 @@ export default function ProfilePage() {
   const readMsgs = useApp((s) => s.readMsgs)
   const pushToast = useApp((s) => s.pushToast)
   const logoutFn = useSession((s) => s.logout)
-  const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).reduce((n, m) => n + (m.badge || 1), 0)
+  const unread = unreadCount(MESSAGES)
   // C-③：API 模式统计为服务端权威口径（GET /v1/me/stats）；积分体系未实现，不展示假数字
   const [stats, setStats] = useState<{ following: number; followers: number; likes: number } | null>(null)
 

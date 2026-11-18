@@ -1,5 +1,6 @@
 // 运动员主页：身份与核验状态 / 公开成绩（模拟标注）/ 经历 / 作品（PRD §5.5）
 import { useNavigate, useParams } from 'react-router-dom'
+import { useViewHistory } from '../../services/viewHistory'
 import { projectById, userById } from '../../data/db'
 import { contentsByAuthor } from '../../services/api'
 import { useApp } from '../../store/store'
@@ -10,6 +11,7 @@ import { ContentCard, FollowButton, fmt } from '../../components/cards'
 
 export default function AthleteProfile() {
   const { id } = useParams()
+  useViewHistory('profile', id)
   const nav = useNavigate()
   const u = userById(id || '')
   const follows = useApp((s) => s.follows)

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { MESSAGES } from '../data/db'
-import { useApp } from '../store/store'
+import { unreadCount, useApp } from '../store/store'
 import type { MsgItem } from '../types'
 import Icon from '../components/Icon'
 import { BrandLogo, EmptyState, MockFooter } from '../components/ui'
@@ -46,7 +46,7 @@ export default function MessagesPage() {
   }, [sp])
 
   const items = MESSAGES.filter((m) => cat === 'all' || m.cat === cat)
-  const totalUnread = MESSAGES.reduce((n, m) => n + (m.unread && !readMsgs[m.id] ? m.badge || 1 : 0), 0)
+  const totalUnread = unreadCount(MESSAGES)
   const catCount = (c: Cat) => (c === 'all' ? MESSAGES.length : MESSAGES.filter((m) => m.cat === c).length)
 
   const openMsg = (m: MsgItem) => {
@@ -93,7 +93,7 @@ export default function MessagesPage() {
           <div className="msg2-list">
             {items.map((m) => {
               const st = KIND_STYLE[m.kind]
-              const unreadBadge = m.unread && !readMsgs[m.id] ? m.badge || 1 : 0
+              const unreadBadge = m.unread && !readMsgs[m.id] ? 1 : 0
               return (
                 <div key={m.id} className="msg2-row" onClick={() => openMsg(m)}>
                   {m.avatar ? (

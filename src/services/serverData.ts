@@ -3,6 +3,7 @@ import { api } from './apiClient'
 import { loadRankings } from './rankings'
 import { hydrateFromServer, DATA_SOURCE, type ServerPayload } from '../data/db'
 import { hydrateRankings } from '../data/rankings'
+import { useApp } from '../store/store'
 
 export async function fetchAllAndHydrate(): Promise<void> {
   if (DATA_SOURCE === 'mock') return // Mock 模式：保持静态演示数据（开发隔离，不调 API）
@@ -69,8 +70,9 @@ export async function fetchAllAndHydrate(): Promise<void> {
   // 榜单快照（服务端 ranking_snapshot 权威；失败时为空快照）
   hydrateRankings(await rankingsPromise)
 
-  // 互动快照写入会话内内存（供组件乐观渲染；持久化在服务端）
-  window.dispatchEvent(new CustomEvent('zt:interactions', { detail: myInteractions }))
+  // 互动数据回填 store（E-2：服务端权威关注/点赞/收藏，修复刷新即丢的断裂链路）
+  useApp.getState().hydrateInteractions(myInteractions)
+  // 其余快照事件（历史遗留通道，保留给潜在订阅者）
   window.dispatchEvent(new CustomEvent('zt:enrollments', { detail: enrollments.data }))
   window.dispatchEvent(new CustomEvent('zt:registrations', { detail: registrations.data }))
 }

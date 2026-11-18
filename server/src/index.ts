@@ -15,6 +15,7 @@ import { mentorshipRoutes } from './routes/mentorship'
 import { contentRoutes } from './routes/contents'
 import { interactionRoutes } from './routes/interactions'
 import { searchRoutes } from './routes/search'
+import { historyRoutes } from './routes/history'
 import { miscRoutes } from './routes/misc'
 
 const PORT = Number(process.env.PORT || 8787)
@@ -60,6 +61,7 @@ await app.register(mentorshipRoutes, { prefix: '/v1' })
 await app.register(contentRoutes, { prefix: '/v1' })
 await app.register(interactionRoutes, { prefix: '/v1' })
 await app.register(searchRoutes, { prefix: '/v1' })
+await app.register(historyRoutes, { prefix: '/v1' })
 await app.register(miscRoutes, { prefix: '/v1' })
 
 await app.listen({ port: PORT, host: '0.0.0.0' })

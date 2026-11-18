@@ -29,11 +29,19 @@ interface AppState {
   setApplyStatus: (st: AppState['mentorApplyStatus']) => void
   pushToast: (msg: string) => void
   removeToast: (id: number) => void
+  /** E-2：登录水合时用服务端权威互动数据回填本地状态（修复刷新即丢的断裂链路） */
+  hydrateInteractions: (my: { follows?: { target_type: string; target_id: string }[]; reactions?: { content_id: string; kind: string }[] }) => void
 }
 
 let toastSeq = 1
 
 const isApi = () => DATA_SOURCE === 'api'
+
+/** E-5：统一未读数口径（服务端 read_at 为权威 + 本地已读即时叠加）；全 APP 消息角标共用 */
+export function unreadCount(messages: { unread?: boolean; id?: string }[]): number {
+  const readMsgs = useApp.getState().readMsgs
+  return messages.filter((m) => m.unread && m.id && !readMsgs[m.id]).length
+}
 
 /** 互动目标类型推断（id 前缀约定：pf_/acc_=人物档案，p_=项目，o_=机构，其余=内容） */
 function targetTypeOf(id: string): 'profile' | 'project' | 'org' | 'content' {
@@ -99,6 +107,21 @@ export const useApp = create<AppState>()(
       },
 
       setApplyStatus: (st) => set({ mentorApplyStatus: st }),
+      hydrateInteractions: (my) => {
+        if (!isApi()) return
+        // 服务端权威互动回填：follows 键=target_id（profile/project/org），reactions 键=content_id
+        const follows: Record<string, boolean> = {}
+        for (const f of my.follows || []) {
+          if (f.target_type === 'profile' || f.target_type === 'project' || f.target_type === 'org') follows[f.target_id] = true
+        }
+        const favs: Record<string, boolean> = {}
+        const likes: Record<string, boolean> = {}
+        for (const r of my.reactions || []) {
+          if (r.kind === 'fav') favs[r.content_id] = true
+          if (r.kind === 'like') likes[r.content_id] = true
+        }
+        set({ follows, favs, likes })
+      },
       markRead: (id) => {
         set({ readMsgs: { ...get().readMsgs, [id]: true } })
         if (isApi()) api('POST', `/notifications/${id}/read`).catch(() => get().pushToast('已读状态同步失败（稍后重试）'))

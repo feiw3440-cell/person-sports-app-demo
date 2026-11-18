@@ -1,6 +1,7 @@
 // 体育项目详情：介绍 / 入门说明 / 相关内容·运动员·导师·课程·赛事·机构（PRD §5.3）
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useViewHistory } from '../../services/viewHistory'
 import { CONTENTS, COURSES, EVENTS, ORGS, USERS, projectById } from '../../data/db'
 import { useApp } from '../../store/store'
 import Icon from '../../components/Icon'
@@ -12,6 +13,7 @@ type Tab = 'content' | 'athlete' | 'mentor' | 'course' | 'event' | 'org'
 
 export default function ProjectDetail() {
   const { id } = useParams()
+  useViewHistory('project', id)
   const nav = useNavigate()
   const p = projectById(id || '')
   const [tab, setTab] = useState<Tab>('content')
@@ -53,7 +55,7 @@ export default function ProjectDetail() {
               className={`btn btn-sm ${favOn ? 'btn-ghost-gray' : 'btn-ghost'}`}
               onClick={() => {
                 const next = toggleFav(p.id)
-                pushToast(next ? '已收藏项目（演示状态）' : '已取消收藏（演示状态）')
+                pushToast(next ? '已收藏项目（服务端同步）' : '已取消收藏')
               }}
             >
               <Icon name="star" size={14} filled={favOn} />

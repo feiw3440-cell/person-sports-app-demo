@@ -6,7 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { DATA_SOURCE, MESSAGES, PROJECTS, SELF_ID, userById } from '../data/db'
 import { rankingRows } from '../data/rankings'
 import { buildRanking } from '../services/api'
-import { currentRole, useApp } from '../store/store'
+import { currentRole, unreadCount, useApp } from '../store/store'
 import type { RankMode, User } from '../types'
 import Icon from '../components/Icon'
 import { Avatar, BrandLogo, EmptyState, FlameGlyph, MockFooter, QuickGlyph, RankMedal } from '../components/ui'
@@ -50,7 +50,7 @@ export default function HomePage() {
   const role = currentRole()
   void role
 
-  const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).length
+  const unread = unreadCount(MESSAGES)
   // API 模式：服务端榜单为权威数据，人员档案只用于补充头像/头衔；缺失时使用榜单行名称兜底
   // Mock 模式：仍使用本地演示榜单（仅开发隔离）
   const preview = useMemo<PreviewRow[]>(() => {

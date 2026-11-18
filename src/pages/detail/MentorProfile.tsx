@@ -2,6 +2,7 @@
 // B-⑤：本人导师视角提供「资料可见性」切换（public/private，PATCH /v1/people/:id 服务端权威）
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useViewHistory } from '../../services/viewHistory'
 import { AUTHORIZATIONS, COURSES, DATA_SOURCE, MENTORSHIPS, SELF_ID, projectById, userById } from '../../data/db'
 import { useApp } from '../../store/store'
 import Icon from '../../components/Icon'
@@ -14,6 +15,7 @@ import { fetchAllAndHydrate } from '../../services/serverData'
 
 export default function MentorProfile() {
   const { id } = useParams()
+  useViewHistory('profile', id)
   const nav = useNavigate()
   const u = userById(id || '')
   const follows = useApp((s) => s.follows)

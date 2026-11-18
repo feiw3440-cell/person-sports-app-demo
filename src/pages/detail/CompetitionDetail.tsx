@@ -1,6 +1,7 @@
 // 赛事详情：报名状态（A4 最小接入：报名写入共享权威库，可在 PC 工作台审核）
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { useViewHistory } from '../../services/viewHistory'
 import { eventById, projectById } from '../../data/db'
 import { useApp } from '../../store/store'
 import { api } from '../../services/apiClient'
@@ -23,6 +24,7 @@ const REG_LABEL: Record<string, string> = {
 
 export default function CompetitionDetail() {
   const { id } = useParams()
+  useViewHistory('competition', id)
   const e = eventById(id || '')
   const pushToast = useApp((s) => s.pushToast)
   const [myReg, setMyReg] = useState<MyReg | null>(null)

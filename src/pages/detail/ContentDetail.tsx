@@ -1,6 +1,7 @@
 // 内容详情：视频/图文占位 + 作者 + 互动 + 评论示例（PRD §5.4）
 // 作者可能是账号 ID，缺少公开档案时使用服务端作者名兜底
 import { useParams } from 'react-router-dom'
+import { useViewHistory } from '../../services/viewHistory'
 import { useNavigate } from 'react-router-dom'
 import { contentById, projectById, userById } from '../../data/db'
 import { useApp } from '../../store/store'
@@ -17,6 +18,7 @@ const COMMENTS = [
 
 export default function ContentDetail() {
   const { id } = useParams()
+  useViewHistory('content', id)
   const nav = useNavigate()
   const c = contentById(id || '')
   const likes = useApp((s) => s.likes)
@@ -127,7 +129,7 @@ export default function ContentDetail() {
             style={{ color: favOn ? 'var(--orange)' : 'var(--ink-2)', fontWeight: 700 }}
             onClick={() => {
               const next = toggleFav(c.id)
-              pushToast(next ? '已收藏（演示状态）' : '已取消收藏（演示状态）')
+              pushToast(next ? '已收藏（服务端同步，可在「我的收藏」查看）' : '已取消收藏')
             }}
           >
             <Icon name="star" size={20} filled={favOn} />

@@ -301,6 +301,8 @@ export type FuncGlyphType =
   | 'course'
   | 'event'
   | 'favs'
+  | 'heart'
+  | 'history'
   | 'order'
   | 'handshake'
   | 'auth'
@@ -399,6 +401,42 @@ export function FuncGlyph({ type, size = 40 }: { type: FuncGlyphType; size?: num
           fill="#fff"
           d="m24 20.3 1.5 3 3.3.5-2.4 2.3.55 3.35L24 27.9l-2.95 1.55.55-3.35-2.4-2.3 3.3-.5z"
         />
+      </svg>
+    )
+  }
+  if (type === 'heart') {
+    // 珊瑚红渐变心形（我的关注）
+    const coral = (
+      <linearGradient id={gid} x1="0.25" y1="0" x2="0.75" y2="1">
+        <stop offset="0" stopColor="#FF8A7A" />
+        <stop offset="1" stopColor="#F04E3C" />
+      </linearGradient>
+    )
+    return (
+      <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden>
+        <defs>{coral}</defs>
+        <path
+          fill={`url(#${gid})`}
+          d="M24 40.5c-1 0-9.6-5.6-13.4-11.2-3.6-5.3-3.4-11.6 1.5-15.2 4.2-3.1 9-1.9 11.9 1.6 2.9-3.5 7.7-4.7 11.9-1.6 4.9 3.6 5.1 9.9 1.5 15.2C33.6 34.9 25 40.5 24 40.5z"
+        />
+        <circle cx="17.4" cy="19.6" r="2.6" fill="#fff" opacity="0.75" />
+      </svg>
+    )
+  }
+  if (type === 'history') {
+    // 青色时钟 + 逆时针箭头（浏览历史）
+    const cyan = (
+      <linearGradient id={gid} x1="0.25" y1="0" x2="0.75" y2="1">
+        <stop offset="0" stopColor="#43D9C4" />
+        <stop offset="1" stopColor="#0FA893" />
+      </linearGradient>
+    )
+    return (
+      <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden>
+        <defs>{cyan}</defs>
+        <circle cx="24" cy="25" r="13.5" fill={`url(#${gid})`} />
+        <path fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" d="M24 17.5V25l5 4" />
+        <path fill={`url(#${gid})`} d="M9 8.5h7.5v4H13l3.8 3.8-2.8 2.8L10.2 15.3v3.2h-4.2v-10z" opacity="0.9" />
       </svg>
     )
   }

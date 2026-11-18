@@ -4,6 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import {
   createSession,
   findLiveSession,
+  hashPassword,
   issueAccess,
   requireAuth,
   revokeSession,
@@ -13,6 +14,7 @@ import {
 import { bumpPermVersion, db, getPermVersion } from '../db'
 import { accountContext, permSummary } from '../rbac'
 import { audit } from '../audit'
+import { idempotencyReplay, idempotencySave } from '../helpers'
 import { err, newId, nowISO, sha256 } from '../util'
 
 function mePayload(accountId: string, identityId?: string, orgId?: string, sessionId?: string) {
@@ -37,6 +39,44 @@ export function mePayloadFor(ctx: AuthContext) {
 }
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
+  /* 注册（E-1）：创建账号 + 基础 regular 身份；档案在用户完善资料时产生 */
+  app.post('/auth/registrations', async (req, reply) => {
+    const replay = idempotencyReplay(req, 'anonymous')
+    if (replay) {
+      reply.header('Idempotency-Replayed', 'true')
+      reply.code(replay.status)
+      return replay.body
+    }
+    const b = (req.body ?? {}) as { login_name?: string; password?: string; display_name?: string }
+    const loginName = String(b.login_name ?? '').trim()
+    const password = String(b.password ?? '')
+    const displayName = String(b.display_name ?? '').trim()
+    if (!/^[a-zA-Z0-9_@.]{3,50}$/.test(loginName)) {
+      throw err.validation('登录名需为 3-50 位字母/数字/下划线/@/. 组合')
+    }
+    if (password.length < 8 || password.length > 100) throw err.validation('密码长度需为 8-100 位')
+    if (!displayName || displayName.length > 30) throw err.validation('昵称必填且不超过 30 字')
+    const dup = db.prepare('SELECT id FROM accounts WHERE login_name = ?').get(loginName) as { id: string } | undefined
+    if (dup) throw err.conflict('LOGIN_NAME_TAKEN', '登录名已被使用')
+
+    const accountId = newId('acc_')
+    db.prepare(
+      "INSERT INTO accounts(id, login_name, password_hash, display_name, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, 'active', ?, ?, 1)",
+    ).run(accountId, loginName, hashPassword(password), displayName, nowISO(), nowISO())
+    // 基础身份：regular（普通用户，active）——登录后 ROLES_LIVE 至少有一个可用身份
+    db.prepare(
+      "INSERT INTO identities(id, account_id, identity_type, label, status, created_at, updated_at, version) VALUES (?, ?, 'regular', '普通用户', 'active', ?, ?, 1)",
+    ).run(newId('idn_'), accountId, nowISO(), nowISO())
+    audit(
+      { accountId, client: 'app', sessionId: '-', permVersion: getPermVersion() },
+      { action: 'auth.register', resourceType: 'account', resourceId: accountId, after: { login_name: loginName, display_name: displayName } },
+    )
+    const body = { data: { id: accountId, login_name: loginName, display_name: displayName } }
+    idempotencySave(req, 'anonymous', 201, body)
+    reply.code(201)
+    return reply.send(body)
+  })
+
   /* 登录 */
   app.post('/auth/sessions', async (req, reply) => {
     const { login_name, password, client } = (req.body ?? {}) as { login_name?: string; password?: string; client?: 'app' | 'pc' }

@@ -7,7 +7,7 @@ import { DATA_SOURCE, MESSAGES, PODIUM, userById } from '../data/db'
 import { rankingRows } from '../data/rankings'
 import { mentorCards } from '../services/mentorCards'
 import { fetchAllAndHydrate } from '../services/serverData'
-import { useApp } from '../store/store'
+import { unreadCount, useApp } from '../store/store'
 import type { RankCategory, RankMode } from '../types'
 import Icon from '../components/Icon'
 import { EmptyState, MockFooter } from '../components/ui'
@@ -55,7 +55,7 @@ export default function TopPage() {
   const pushToast = useApp((s) => s.pushToast)
   const readMsgs = useApp((s) => s.readMsgs)
   const modeDef = MODES.find((m) => m.key === mode)!
-  const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).reduce((n, m) => n + (m.badge || 1), 0)
+  const unread = unreadCount(MESSAGES)
 
   // 三种模式的名次分数：服务端榜单为准（Mock 模式仍用本地演示值）
   const scoreByMode = new Map<string, Partial<Record<RankMode, number>>>()

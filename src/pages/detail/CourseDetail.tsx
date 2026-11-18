@@ -1,6 +1,7 @@
 // 课程详情：报名入口（A4 最小接入：报名写入共享权威库，导师/机构在 PC 工作台审核）
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useViewHistory } from '../../services/viewHistory'
 import { courseById, projectById, userById } from '../../data/db'
 import { useApp } from '../../store/store'
 import { api } from '../../services/apiClient'
@@ -25,6 +26,7 @@ const EN_LABEL: Record<string, string> = {
 
 export default function CourseDetail() {
   const { id } = useParams()
+  useViewHistory('course', id)
   const nav = useNavigate()
   const k = courseById(id || '')
   const pushToast = useApp((s) => s.pushToast)

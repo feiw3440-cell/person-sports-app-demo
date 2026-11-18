@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CONTENTS, COURSES, DISCOVER_CATS, EVENTS, MESSAGES, ORGS, USERS, userById } from '../data/db'
 import { mentorCards } from '../services/mentorCards'
-import { useApp } from '../store/store'
+import { unreadCount, useApp } from '../store/store'
 import Icon from '../components/Icon'
 import { Avatar, BrandLogo, DiscoverGlyph, EmptyState, MockFooter } from '../components/ui'
 import type { DiscoverGlyphType } from '../components/ui'
@@ -25,7 +25,7 @@ const TILES: { key: Tile; label: string; glyph: DiscoverGlyphType }[] = [
 
 function MsgBadge() {
   const readMsgs = useApp((s) => s.readMsgs)
-  const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).length
+  const unread = unreadCount(MESSAGES)
   if (!unread) return null
   return <span className="rb">{unread}</span>
 }
@@ -69,7 +69,7 @@ export default function DiscoverPage() {
 
   const mentors = mentorCards('overall', 3)
   const isFeed = tile === 'project' || tile === 'video'
-  const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).length
+  const unread = unreadCount(MESSAGES)
 
   return (
     <>
