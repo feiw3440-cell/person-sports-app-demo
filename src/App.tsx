@@ -115,11 +115,12 @@ function AppGate() {
     setState('loading')
     try {
       await fetchAllAndHydrate()
-      // A2 修复：登录/水合后，把本地角色选择同步到服务端上下文（org 上下文优先匹配 org 角色）
+      // 会话恢复的角色选择以服务端上下文为权威：identity 上下文 > 组织上下文 > 默认首位
       const sess = useSession.getState()
       const roles = ROLES_LIVE
+      const ctxRole = sess.account?.identity_id ? roles.find((r) => r.id === sess.account!.identity_id) : undefined
       const orgRole = sess.orgId ? roles.find((r) => r.id === 'org_' + sess.orgId) : undefined
-      const preferred = orgRole || roles[0]
+      const preferred = ctxRole || orgRole || roles[0]
       if (preferred) useApp.getState().switchRole(preferred.id)
       setState('ready')
     } catch (e) {

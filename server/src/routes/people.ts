@@ -5,6 +5,7 @@ import { db } from '../db'
 import { requirePerm, rolesOf, mentorGrantedAccountIds } from '../rbac'
 import { audit } from '../audit'
 import { applyFlow } from '../statemachine'
+import { idempotencyReplay, idempotencySave } from '../helpers'
 import { err, newId, nowISO } from '../util'
 
 type ProfileRow = {
@@ -171,6 +172,115 @@ export async function peopleRoutes(app: FastifyInstance): Promise<void> {
     }
     audit(ctx, { action: `credential.${action}`, resourceType: 'credential', resourceId: id, before: { status: result.before }, after: { status: result.after }, reason })
     return reply.send({ data: { id, status: result.after, version: (row.version as number) + 1 } })
+  })
+
+  /* ===== 导师申请（闭环核心：APP 提交 → 平台审核 → identity 升级 mentor） ===== */
+  // 申请创建（本人）：创建/复用 pending mentor identity + submitted credential；已是导师或申请进行中返回 409
+  app.post('/credentials', async (req, reply) => {
+    const ctx = requireAuth(req)
+    const replay = idempotencyReplay(req, ctx.accountId)
+    if (replay) {
+      reply.header('Idempotency-Replayed', 'true')
+      reply.code(replay.status)
+      return replay.body
+    }
+    const b = (req.body ?? {}) as { kind?: string; source?: string; evidence?: string }
+    const kind = String(b.kind ?? '').trim()
+    if (!kind) throw err.validation('缺少资质名称（kind）')
+    const source = String(b.source ?? 'app_self_apply').trim()
+    const evidence = b.evidence ? String(b.evidence) : null
+    if (kind.length > 100) throw err.validation('资质名称过长（≤100）')
+
+    const activeMentor = db
+      .prepare("SELECT id FROM identities WHERE account_id = ? AND identity_type = 'mentor' AND status = 'active'")
+      .get(ctx.accountId) as { id: string } | undefined
+    if (activeMentor) throw err.conflict('ALREADY_MENTOR', '已拥有认证导师身份，无需重复申请')
+
+    const inProgress = db
+      .prepare(
+        `SELECT c.id FROM credentials c JOIN identities i ON i.id = c.identity_id
+         WHERE i.account_id = ? AND i.identity_type = 'mentor' AND c.status IN ('draft','submitted','under_review','resubmitted')`,
+      )
+      .get(ctx.accountId) as { id: string } | undefined
+    if (inProgress) throw err.conflict('APPLICATION_IN_PROGRESS', '已有进行中的导师申请（审核中）', { credential_id: inProgress.id })
+
+    // 创建或复用 mentor identity：rejected 可重新申请（置回 pending），否则新建 pending
+    let identity = db
+      .prepare("SELECT id FROM identities WHERE account_id = ? AND identity_type = 'mentor'")
+      .get(ctx.accountId) as { id: string } | undefined
+    if (identity) {
+      db.prepare("UPDATE identities SET status = 'pending', updated_at = ?, version = version + 1 WHERE id = ?").run(nowISO(), identity.id)
+    } else {
+      identity = { id: newId('idn_') }
+      db.prepare(
+        "INSERT INTO identities(id, account_id, identity_type, label, status, created_at, updated_at, version) VALUES (?, ?, 'mentor', ?, 'pending', ?, ?, 1)",
+      ).run(identity.id, ctx.accountId, '认证导师（等级占位名·规则待确认）', nowISO(), nowISO())
+    }
+
+    const credId = newId('cr_')
+    db.prepare(
+      "INSERT INTO credentials(id, identity_id, kind, source, evidence, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, 'submitted', ?, ?, 1)",
+    ).run(credId, identity.id, kind, source, evidence, nowISO(), nowISO())
+    audit(ctx, {
+      action: 'credential.create',
+      resourceType: 'credential',
+      resourceId: credId,
+      after: { kind, source, identity_id: identity.id, status: 'submitted' },
+    })
+    const body = { data: { id: credId, identity_id: identity.id, status: 'submitted', kind } }
+    idempotencySave(req, ctx.accountId, 201, body)
+    reply.code(201)
+    return reply.send(body)
+  })
+
+  // 本人申请记录（APP 进度展示）
+  app.get('/credentials/mine', async (req, reply) => {
+    const ctx = requireAuth(req)
+    const rows = db
+      .prepare(
+        `SELECT c.id, c.kind, c.source, c.evidence, c.status, c.reason, c.reviewed_at, c.created_at, c.updated_at, c.version,
+                i.identity_type, i.label, i.status AS identity_status
+         FROM credentials c JOIN identities i ON i.id = c.identity_id
+         WHERE i.account_id = ? ORDER BY c.created_at DESC`,
+      )
+      .all(ctx.accountId)
+    return reply.send({ data: rows, meta: { total: rows.length } })
+  })
+
+  // 审核列表（reviewer/platform_ops/platform_admin）：credentials.review 权限
+  app.get('/credentials', async (req, reply) => {
+    const ctx = requireAuth(req)
+    requirePerm(ctx, 'credentials', 'review')
+    const q = req.query as { status?: string; page?: string; page_size?: string }
+    const toPositiveInt = (value: string | undefined, name: string, fallback: number): number => {
+      if (value === undefined || value === '') return fallback
+      const n = Number(value)
+      if (!Number.isInteger(n) || n < 1) throw err.validation(`${name} 必须为正整数`)
+      return n
+    }
+    const page = toPositiveInt(q.page, 'page', 1)
+    const pageSize = Math.min(toPositiveInt(q.page_size, 'page_size', 20), 100)
+    const where: string[] = []
+    const args: unknown[] = []
+    if (q.status) { where.push('c.status = ?'); args.push(q.status) }
+    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
+    const total = (db.prepare(`SELECT COUNT(*) AS c FROM credentials c ${whereSql}`).get(...args) as { c: number }).c
+    const rows = db
+      .prepare(
+        `SELECT c.id, c.kind, c.source, c.evidence, c.status, c.valid_until, c.reason, c.reviewed_by, c.reviewed_at,
+                c.created_at, c.updated_at, c.version,
+                i.identity_type, i.label, i.status AS identity_status,
+                a.display_name, p.id AS profile_id
+         FROM credentials c
+         JOIN identities i ON i.id = c.identity_id
+         JOIN accounts a ON a.id = i.account_id
+         LEFT JOIN person_profiles p ON p.account_id = i.account_id
+         ${whereSql}
+         ORDER BY c.created_at DESC
+         LIMIT ? OFFSET ?`,
+      )
+      .all(...args, pageSize, (page - 1) * pageSize)
+    return reply.send({ data: rows, meta: { total, page, page_size: pageSize } })
   })
 
   /* 导出（单独授权 + 审计）：CSV 返回 */

@@ -10,6 +10,7 @@ type SessionAccount = {
   login_name: string
   session_id?: string | null
   org_id?: string | null
+  identity_id?: string | null
 }
 
 type OrgOption = { org_id: string; org_name: string; role: string }
@@ -86,6 +87,7 @@ export const useSession = create<SessionState>()(
             display_name: d.me.display_name,
             login_name: d.me.login_name,
             session_id: d.me.session_id || null,
+            identity_id: d.me.identity_id ?? null,
           }
           const tokens: SessionTokens = { access: d.access_token, refresh: d.refresh_token, account }
           // 先注入令牌：后续 /auth/context 必须携带刚签发的 access token
@@ -99,7 +101,7 @@ export const useSession = create<SessionState>()(
               '/auth/context',
               { org_id: orgs[0].org_id },
             )
-            applySession(set, { ...tokens, access: switched.data.access_token }, orgs[0].org_id)
+            applySession(set, { ...tokens, access: switched.data.access_token, account: { ...tokens.account, identity_id: switched.data.me.identity_id ?? null } }, orgs[0].org_id)
             return true
           }
           if (orgs.length > 1) {
@@ -124,7 +126,7 @@ export const useSession = create<SessionState>()(
             '/auth/context',
             { org_id: orgId },
           )
-          applySession(set, { ...pending, access: switched.data.access_token }, orgId)
+          applySession(set, { ...pending, access: switched.data.access_token, account: { ...pending.account, identity_id: switched.data.me.identity_id ?? null } }, orgId)
           return true
         } catch (e) {
           set({ loginError: e instanceof Error ? e.message : '机构上下文建立失败' })
@@ -149,6 +151,7 @@ export const useSession = create<SessionState>()(
               login_name: res.data.me.login_name,
               session_id: res.data.me.session_id || null,
               org_id: orgId ?? s.orgId,
+              identity_id: identityId ?? null,
             },
           }
           applySession(set, next, orgId ?? s.orgId)

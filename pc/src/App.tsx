@@ -5,6 +5,7 @@ import LoginPage from '@/pages/LoginPage'
 import WorkbenchPage from '@/pages/WorkbenchPage'
 import ProjectsPage from '@/pages/ProjectsPage'
 import PeoplePage from '@/pages/PeoplePage'
+import CredentialsPage from '@/pages/CredentialsPage'
 import CoursesPage from '@/pages/CoursesPage'
 import MentorshipPage from '@/pages/MentorshipPage'
 import CompetitionsPage from '@/pages/CompetitionsPage'
@@ -30,6 +31,7 @@ export default function App() {
         <Route path="/" element={<WorkbenchPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/people" element={<PeoplePage />} />
+        <Route path="/people/credentials" element={<CredentialsPage />} />
         <Route path="/people/:id" element={<PeoplePage />} />
         <Route path="/training/courses" element={<CoursesPage />} />
         <Route path="/training/courses/:id" element={<CoursesPage />} />

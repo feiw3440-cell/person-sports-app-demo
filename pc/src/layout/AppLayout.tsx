@@ -6,6 +6,7 @@ import {
   DashboardOutlined, ApartmentOutlined, TeamOutlined, ReadOutlined, TrophyOutlined,
   FlagOutlined, BankOutlined, FileTextOutlined, BarChartOutlined, SettingOutlined,
   BellOutlined, SearchOutlined, UserOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
+  SafetyOutlined,
 } from '@ant-design/icons'
 import { get, patch, post } from '@/api/client'
 import { useAuth, hasPerm } from '@/store/auth'
@@ -35,6 +36,7 @@ export default function AppLayout() {
     ]
     if (hasPerm('projects.read')) items.push({ key: '/projects', icon: <ApartmentOutlined />, label: '体育项目中心' })
     if (hasPerm('people.read')) items.push({ key: '/people', icon: <TeamOutlined />, label: '人员与人才' })
+    if (hasPerm('credentials.review')) items.push({ key: '/people/credentials', icon: <SafetyOutlined />, label: '资质审核' })
     if (hasPerm('courses.read') || hasPerm('mentorships.read')) items.push({ key: '/training/courses', icon: <ReadOutlined />, label: '教学与训练' })
     if (hasPerm('mentorships.read') || hasPerm('authorizations.read')) items.push({ key: '/mentorship', icon: <TrophyOutlined />, label: '师徒与授权' })
     if (hasPerm('competitions.read')) items.push({ key: '/competitions', icon: <FlagOutlined />, label: '赛事活动' })

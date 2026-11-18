@@ -94,8 +94,9 @@ export default function IdentityPage() {
     setBusy(true)
     const ok = await switchContext(r.switch.identityId, r.switch.orgId)
     if (ok) {
-      switchRole(r.key)
+      // 先水合再选中：新开通身份（如导师审核通过）须先进入 ROLES_LIVE，switchRole 才能命中
       try { await fetchAllAndHydrate() } catch { /* 数据刷新失败不阻塞切换反馈 */ }
+      switchRole(r.key)
       pushToast(`已切换服务端上下文：${r.label}`)
     } else {
       pushToast('身份切换失败，服务端拒绝了上下文变更')
