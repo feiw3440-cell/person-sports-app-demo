@@ -68,4 +68,7 @@ const lanAddr = Object.values(os.networkInterfaces())
   .find((a) => a && a.family === 'IPv4' && !a.internal)?.address
 console.log(`[server] 专体共享 API 已启动：http://127.0.0.1:${PORT}/v1`)
 if (lanAddr) console.log(`[server] 局域网地址（实体手机 APP 的 VITE_API_BASE 使用）：http://${lanAddr}:${PORT}/v1`)
+if (!process.env.JWT_SECRET) {
+  console.log('[server][安全提示] 未设置 JWT_SECRET，当前使用演示默认值（local-demo-secret-change-me）——仅限本地演示；生产部署必须通过安全渠道注入独立密钥')
+}
 void db
