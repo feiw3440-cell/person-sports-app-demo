@@ -128,6 +128,19 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ data: mePayloadFor(ctx) })
   })
 
+  /* 本人社交统计（C-③：个人中心数字服务端权威口径；积分体系未实现，不返回） */
+  app.get('/me/stats', async (req, reply) => {
+    const ctx = requireAuth(req)
+    const following = (db.prepare('SELECT COUNT(*) AS c FROM follows WHERE account_id = ?').get(ctx.accountId) as { c: number }).c
+    const profile = db.prepare('SELECT id FROM person_profiles WHERE account_id = ?').get(ctx.accountId) as { id: string } | undefined
+    // 粉丝/获赞按「本人档案」为目标维度计数（follows/reactions 的 target_id 为 profile id）
+    const followers = profile
+      ? (db.prepare("SELECT COUNT(*) AS c FROM follows WHERE target_type = 'person' AND target_id = ?").get(profile.id) as { c: number }).c
+      : 0
+    const likes = (db.prepare("SELECT COUNT(*) AS c FROM reactions r JOIN contents c ON c.id = r.content_id WHERE c.author_account_id = ? AND r.kind = 'like'").get(ctx.accountId) as { c: number }).c
+    return reply.send({ data: { following, followers, likes } })
+  })
+
   app.patch('/me', async (req, reply) => {
     const ctx = requireAuth(req)
     const body = (req.body ?? {}) as { display_name?: string; avatar_url?: string; phone?: string; locale?: string; timezone?: string; version?: number }

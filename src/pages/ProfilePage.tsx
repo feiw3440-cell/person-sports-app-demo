@@ -1,12 +1,13 @@
 // 我的页 v2：一比一还原高保真原型（蓝白国际体育科技风）
 // 结构：个人资料区 → 个人数据 → 专体VIP → 我的功能 → 专体服务 → 赛事宣传入口
 // 范围说明：订单/钱包/VIP/积分为原型占位（未来交易能力，本阶段未接入，点击有明确提示）
-import type { CSSProperties } from 'react'
+import { useEffect, useState, type CSSProperties } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { MESSAGES, ROLE_LABEL, SELF_ID, userById } from '../data/db'
+import { DATA_SOURCE, MESSAGES, ROLE_LABEL, SELF_ID, userById } from '../data/db'
 // 个人资料页：账号资料可能尚未水合或无公开档案；所有展示名/ID 都必须有兜底，禁止非空断言
 import { currentRole, useApp } from '../store/store'
 import { useSession } from '../services/session'
+import { api } from '../services/apiClient'
 import Icon from '../components/Icon'
 import { BrandLogo, FuncGlyph, MockFooter } from '../components/ui'
 import type { FuncGlyphType } from '../components/ui'
@@ -43,6 +44,17 @@ export default function ProfilePage() {
   const pushToast = useApp((s) => s.pushToast)
   const logoutFn = useSession((s) => s.logout)
   const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).reduce((n, m) => n + (m.badge || 1), 0)
+  // C-③：API 模式统计为服务端权威口径（GET /v1/me/stats）；积分体系未实现，不展示假数字
+  const [stats, setStats] = useState<{ following: number; followers: number; likes: number } | null>(null)
+
+  useEffect(() => {
+    if (DATA_SOURCE === 'mock') return
+    let removed = false
+    api<{ data: { following: number; followers: number; likes: number } }>('GET', '/me/stats')
+      .then((res) => { if (!removed) setStats(res.data) })
+      .catch(() => { /* 统计失败保持占位，不打扰主页面 */ })
+    return () => { removed = true }
+  }, [])
 
   return (
     <>
@@ -82,22 +94,22 @@ export default function ProfilePage() {
       </div>
 
       <div style={{ paddingBottom: 78 }}>
-        {/* 个人数据 */}
+        {/* 个人数据：API 模式服务端权威（关注/粉丝/获赞）；积分为未实现能力，不展示假数字 */}
         <div className="me2-stats">
           <div className="ms">
-            <div className="n">128</div>
+            <div className="n">{stats ? stats.following : DATA_SOURCE === 'api' ? '…' : '128'}</div>
             <div className="l">关注</div>
           </div>
           <div className="ms">
-            <div className="n">356</div>
+            <div className="n">{stats ? stats.followers : DATA_SOURCE === 'api' ? '…' : '356'}</div>
             <div className="l">粉丝</div>
           </div>
           <div className="ms">
-            <div className="n">1.2万</div>
+            <div className="n">{stats ? stats.likes : DATA_SOURCE === 'api' ? '…' : '1.2万'}</div>
             <div className="l">获赞</div>
           </div>
           <div className="ms">
-            <div className="n">89</div>
+            <div className="n" style={{ color: 'var(--ink-3)', fontSize: 15 }}>即将上线</div>
             <div className="l">积分</div>
           </div>
         </div>

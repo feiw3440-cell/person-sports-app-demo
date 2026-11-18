@@ -116,6 +116,12 @@ const PATHS: Record<string, JSX.Element> = {
     </>
   ),
   swap: <path d="M7.5 4.5 4 8l3.5 3.5M4 8h13M16.5 20 20 16.5 16.5 13M20 16.5H7" />,
+  refresh: (
+    <>
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+      <path d="M19.5 3.5v3.4h-3.4" />
+    </>
+  ),
   grid: (
     <>
       <rect x="4.5" y="4.5" width="6.4" height="6.4" rx="1.6" />

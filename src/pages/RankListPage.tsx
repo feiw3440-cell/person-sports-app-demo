@@ -44,6 +44,7 @@ export default function RankListPage() {
   const [ranking, setRanking] = useState<ServerRanking | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -60,29 +61,32 @@ export default function RankListPage() {
       })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [cat, mode, period])
+  }, [cat, mode, period, reloadTick])
 
   const rows = useMemo<RankRow[]>(() => {
     if (!ranking) return []
     return (ranking.rows || []).map((r) => {
-      const profile = userById(r.entity_id)
+      // 快照行字段统一：target_id/display_name（fetchRanking 已归一，兼容旧字段）
+      const entityId = r.target_id || r.entity_id
+      const displayName = r.display_name || r.name
+      const profile = userById(entityId)
       let href: string | undefined
       if (cat === 'athlete' || cat === 'mentor') {
         href = profile ? `/${cat}/${profile.id}` : undefined
-      } else if (cat === 'project' && PROJECTS.some((p) => p.id === r.entity_id)) {
-        href = `/project/${r.entity_id}`
-      } else if (cat === 'course' && COURSES.some((k) => k.id === r.entity_id)) {
-        href = `/course/${r.entity_id}`
-      } else if (cat === 'event' && EVENTS.some((e) => e.id === r.entity_id)) {
-        href = `/event/${r.entity_id}`
-      } else if (cat === 'org' && ORGS.some((o) => o.id === r.entity_id)) {
-        href = `/org/${r.entity_id}`
+      } else if (cat === 'project' && PROJECTS.some((p) => p.id === entityId)) {
+        href = `/project/${entityId}`
+      } else if (cat === 'course' && COURSES.some((k) => k.id === entityId)) {
+        href = `/course/${entityId}`
+      } else if (cat === 'event' && EVENTS.some((e) => e.id === entityId)) {
+        href = `/event/${entityId}`
+      } else if (cat === 'org' && ORGS.some((o) => o.id === entityId)) {
+        href = `/org/${entityId}`
       }
       return {
         entity: {
-          id: r.entity_id,
+          id: entityId,
           type: cat,
-          name: r.name,
+          name: displayName,
           prof: r.score,
           profVerified: !!r.verified,
           influence: 0,
@@ -108,9 +112,19 @@ export default function RankListPage() {
   return (
     <>
       <div className="ranklist-hero">
-        <button className="icon-btn" style={{ background: 'rgba(255,255,255,.16)', color: '#fff' }} onClick={() => nav('/top')} aria-label="返回">
-          <Icon name="back" size={18} />
-        </button>
+        <div className="flex" style={{ justifyContent: 'space-between' }}>
+          <button className="icon-btn" style={{ background: 'rgba(255,255,255,.16)', color: '#fff' }} onClick={() => nav('/top')} aria-label="返回">
+            <Icon name="back" size={18} />
+          </button>
+          <button
+            className="icon-btn"
+            style={{ background: 'rgba(255,255,255,.16)', color: '#fff' }}
+            onClick={() => { setReloadTick((t) => t + 1) }}
+            aria-label="刷新榜单"
+          >
+            <Icon name="refresh" size={18} />
+          </button>
+        </div>
         <div style={{ height: 8 }} />
         <div className="rl-title">{CAT_TITLES[cat]}</div>
         <div className="rl-sub">数据来源：共享 API · ranking_snapshot（服务端权威）</div>

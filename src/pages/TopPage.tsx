@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 import { DATA_SOURCE, MESSAGES, PODIUM, userById } from '../data/db'
 import { rankingRows } from '../data/rankings'
 import { mentorCards } from '../services/mentorCards'
+import { fetchAllAndHydrate } from '../services/serverData'
 import { useApp } from '../store/store'
 import type { RankCategory, RankMode } from '../types'
 import Icon from '../components/Icon'
@@ -50,6 +51,8 @@ function Crown({ size = 26 }: { size?: number }) {
 export default function TopPage() {
   const nav = useNavigate()
   const [mode, setMode] = useState<RankMode>('overall')
+  const [refreshing, setRefreshing] = useState(false)
+  const pushToast = useApp((s) => s.pushToast)
   const readMsgs = useApp((s) => s.readMsgs)
   const modeDef = MODES.find((m) => m.key === mode)!
   const unread = MESSAGES.filter((m) => m.unread && !readMsgs[m.id]).reduce((n, m) => n + (m.badge || 1), 0)
@@ -59,9 +62,11 @@ export default function TopPage() {
   if (DATA_SOURCE !== 'mock') {
     for (const item of MODES) {
       for (const row of rankingRows('athlete', item.key)) {
-        const scores = scoreByMode.get(row.entity_id) || {}
+        const eid = row.target_id || row.entity_id
+        if (!eid) continue
+        const scores = scoreByMode.get(eid) || {}
         scores[item.key] = row.score
-        scoreByMode.set(row.entity_id, scores)
+        scoreByMode.set(eid, scores)
       }
     }
   }
@@ -84,21 +89,37 @@ export default function TopPage() {
       : rankingRows('athlete', 'overall')
           .slice(0, 3)
           .map((row) => {
-            const user = userById(row.entity_id)
+            const eid = row.target_id || row.entity_id || ''
+            const rowName = row.display_name || row.name || ''
+            const user = userById(eid)
             return {
-              id: row.entity_id,
+              id: eid,
               rank: row.rank,
-              name: user?.name || row.name,
+              name: user?.name || rowName || '运动员',
               color: user?.color || '#2872B8',
               photo: user?.photo,
               title: (user?.title || '运动员').replace('运动员', '').trim() || '运动员',
-              vals: scoreByMode.get(row.entity_id) || { overall: row.score },
+              vals: scoreByMode.get(eid) || { overall: row.score },
               hasProfile: !!user,
             }
-          })
+          }).filter((p) => p.id)
 
   const ordered = podium.length >= 3 ? [podium[1], podium[0], podium[2]] : podium
   const mentors = mentorCards('popularity', 3)
+
+  /** 手动刷新：重新水合（榜单/实体均为服务端权威快照） */
+  const refresh = async () => {
+    if (refreshing) return
+    setRefreshing(true)
+    try {
+      await fetchAllAndHydrate()
+      pushToast('榜单数据已刷新')
+    } catch {
+      pushToast('刷新失败（网络异常），已保留当前数据')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
     <>
@@ -121,6 +142,15 @@ export default function TopPage() {
               {m.label}
             </button>
           ))}
+          <button
+            className="mode-pill"
+            style={{ marginLeft: 'auto', minWidth: 44 }}
+            disabled={refreshing}
+            onClick={() => void refresh()}
+            aria-label="刷新榜单"
+          >
+            <Icon name="refresh" size={15} />
+          </button>
         </div>
 
         {/* 七大榜单分类 */}
