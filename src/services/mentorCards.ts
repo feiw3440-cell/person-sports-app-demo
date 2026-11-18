@@ -23,10 +23,10 @@ export function mentorCards(mode: RankMode = 'overall', limit = 3): MentorCardDa
   const rows = rankingRows('mentor', mode)
   if (rows.length > 0) {
     return rows.slice(0, limit).map((row) => {
-      const user = userById(row.entity_id)
+      const user = userById(row.target_id)
       return {
-        id: row.entity_id,
-        name: user?.name || row.name,
+        id: row.target_id,
+        name: user?.name || row.display_name,
         color: user?.color || FALLBACK_COLOR,
         photo: user?.photo,
         title: user?.title,

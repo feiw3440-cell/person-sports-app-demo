@@ -21,6 +21,7 @@ export function SportGlyph({ className, style }: { className?: string; style?: C
 }
 
 export function Avatar({ name, color, size = 'md', photo }: { name: string; color: string; size?: 'sm' | 'md' | 'lg' | 'xl'; photo?: string }) {
+  const initial = (name || '?').slice(0, 1)
   if (photo) {
     return (
       <div className={`avatar avatar-${size}`} style={{ background: '#dfe8f5', overflow: 'hidden', boxShadow: 'inset 0 0 0 2px rgba(255,255,255,.5)' }}>
@@ -30,7 +31,7 @@ export function Avatar({ name, color, size = 'md', photo }: { name: string; colo
   }
   return (
     <div className={`avatar avatar-${size}`} style={{ background: `linear-gradient(135deg, ${color}, ${color}CC)` }}>
-      {name.slice(0, 1)}
+      {initial}
     </div>
   )
 }

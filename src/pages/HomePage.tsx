@@ -7,7 +7,7 @@ import { DATA_SOURCE, MESSAGES, PROJECTS, SELF_ID, userById } from '../data/db'
 import { rankingRows } from '../data/rankings'
 import { buildRanking } from '../services/api'
 import { currentRole, useApp } from '../store/store'
-import type { RankMode } from '../types'
+import type { RankMode, User } from '../types'
 import Icon from '../components/Icon'
 import { Avatar, BrandLogo, EmptyState, FlameGlyph, MockFooter, QuickGlyph, RankMedal } from '../components/ui'
 
@@ -46,7 +46,7 @@ export default function HomePage() {
   const nav = useNavigate()
   const [mode, setMode] = useState<RankMode>('overall')
   const readMsgs = useApp((s) => s.readMsgs)
-  const me = userById(SELF_ID)
+  const me: Partial<User> & { name: string; color: string } = (userById(SELF_ID) as User) || { name: SELF_ID, color: '#2872B8', kind: 'student', roles: [], verify: 'pending', region: '', title: '演示账号' }
   const role = currentRole()
   void role
 
@@ -70,10 +70,10 @@ export default function HomePage() {
       })
     }
     return rankingRows('athlete', mode).slice(0, 3).map((row) => {
-      const user = userById(row.entity_id)
+      const user = userById(row.target_id)
       return {
-        id: row.entity_id,
-        name: user?.name || row.name,
+        id: row.target_id,
+        name: user?.name || row.display_name,
         color: user?.color || '#2872B8',
         photo: user?.photo,
         title: (user?.title || '运动员').replace('运动员', '').trim() || '运动员',

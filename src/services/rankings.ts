@@ -5,11 +5,16 @@ import type { RankCategory, RankMode, Period } from '../types'
 
 export type ServerRankingRow = {
   rank: number
-  entity?: string
-  entity_id: string
-  name: string
+  /** 榜单目标 id：人物榜为 profile id，项目/课程/赛事/机构榜为对应实体 id */
+  target_id?: string
+  /** 兼容旧字段名（部分快照行使用 entity_id） */
+  entity_id?: string
+  /** 兼容旧字段名（部分快照行使用 name） */
+  name?: string
+  /** 快照行实际字段：展示名 */
+  display_name?: string
   score: number
-  delta: number
+  delta?: number
   note?: string
   verified?: boolean
 }
@@ -49,6 +54,9 @@ export async function fetchRanking(category: RankCategory, mode: RankMode, perio
   const rows = sortedRows.map((row, index) => ({
     ...row,
     rank: typeof row.rank === 'number' ? row.rank : index + 1,
+    // 统一字段：target_id/display_name（快照行实际字段；旧字段 entity_id/name 兼容）
+    target_id: row.target_id || row.entity_id,
+    display_name: row.display_name || row.name,
   }))
   return {
     ...EMPTY_RANKING,

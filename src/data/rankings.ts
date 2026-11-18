@@ -19,5 +19,10 @@ export function rankingOf(category: 'athlete' | 'mentor', mode: RankMode): Serve
 }
 
 export function rankingRows(category: 'athlete' | 'mentor', mode: RankMode): ServerRankingRow[] {
-  return rankingOf(category, mode)?.rows ?? []
+  return (rankingOf(category, mode)?.rows ?? []).map((row) => ({
+    ...row,
+    // 快照行字段统一：target_id/display_name（兼容旧 entity_id/name 字段名）
+    target_id: row.target_id || row.entity_id,
+    display_name: row.display_name || row.name,
+  }))
 }

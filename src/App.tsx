@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HashRouter, Route, Routes, useLocation } from 'react-router-dom'
 import BottomNav from './components/BottomNav'
+import ErrorBoundary from './components/ErrorBoundary'
 import { ToastHost } from './components/ui'
 import Icon from './components/Icon'
 import { DATA_SOURCE } from './data/db'
@@ -169,9 +170,11 @@ function AppGate() {
   if (DATA_SOURCE === 'api') {
     if (!access)
       return (
-        <div className="shell">
-          <LoginPage />
-        </div>
+        <ErrorBoundary>
+          <div className="shell">
+            <LoginPage />
+          </div>
+        </ErrorBoundary>
       )
     if (state === 'loading') return <BrandLoading text="正在从共享 API 加载专体数据…" />
     if (state === 'error')
@@ -195,6 +198,7 @@ function AppGate() {
   }
 
   return (
+    <ErrorBoundary>
     <HashRouter>
       {refreshing && (
         <div
@@ -209,6 +213,7 @@ function AppGate() {
       )}
       <Layout />
     </HashRouter>
+    </ErrorBoundary>
   )
 }
 
