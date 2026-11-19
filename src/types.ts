@@ -89,6 +89,10 @@ export interface Course {
   status: string
   sessions: string
   region: string
+  priceCents?: number | null
+  priceNote?: string | null
+  reviewCount?: number
+  ratingAvg?: number | null
   metrics: Metrics
   trend: Trend
 }

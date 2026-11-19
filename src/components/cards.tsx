@@ -216,8 +216,12 @@ export function CourseRow({ k }: { k: Course }) {
         <div className="t-mini mt4 ellipsis1">
           {mentor?.name} · {k.format} · {k.sessions}
         </div>
-        <div className="mt4 flex gap6">
+        <div className="mt4 flex gap6 wrap">
           <span className={`badge ${statusBadge(k.status)}`}>{k.status}</span>
+          {k.priceCents !== undefined && (
+            <span className="badge badge-brand">{k.priceCents == null ? '免费' : `¥${(k.priceCents / 100).toFixed(2)}`}</span>
+          )}
+          {k.ratingAvg != null && <span className="badge badge-blue">★ {k.ratingAvg}（{k.reviewCount ?? 0}）</span>}
         </div>
       </div>
       <Icon name="arrow-r" size={16} style={{ color: 'var(--ink-3)' }} />

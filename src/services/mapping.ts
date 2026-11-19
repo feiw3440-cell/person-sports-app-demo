@@ -179,6 +179,11 @@ export function mapCourses(rows: AnyRow[], profileIdByAccount: Map<string, strin
       status: statusZh(r.status),
       sessions: r.sessions || '（演示）课时安排',
       region: r.region || '',
+      // F-2/F-3：价格与评价聚合以服务端为准（未加载时保持 undefined，不伪造）
+      priceCents: typeof r.price_cents === 'number' ? r.price_cents : null,
+      priceNote: r.price_note ?? null,
+      reviewCount: typeof r.review_count === 'number' ? r.review_count : 0,
+      ratingAvg: typeof r.rating_avg === 'number' ? r.rating_avg : null,
       metrics: demoMetrics(r.id + 'k'),
       trend: demoTrend(r.id + 'k'),
       _i: i,

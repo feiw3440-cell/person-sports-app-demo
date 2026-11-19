@@ -1,6 +1,6 @@
 // 聚合列表页：全部项目/赛事中心/课程/运动员/导师/机构/内容 + 我的关注/收藏/课程/赛事
 // E-2：API 模式下我的关注/收藏由水合回填（服务端权威）；我的课程/赛事报名直接拉本人记录
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { CONTENTS, COURSES, DATA_SOURCE, EVENTS, ORGS, PROJECTS, USERS, courseById, eventById, projectById, userById } from '../data/db'
 import { useApp } from '../store/store'
@@ -12,7 +12,7 @@ import { ContentRow, CourseRow, EventRow, FollowButton, OrgRow, PersonRow, Proje
 const TITLES: Record<string, { title: string; sub: string }> = {
   projects: { title: '全部体育项目', sub: '按分类浏览（演示数据）' },
   events: { title: '赛事中心', sub: '近期赛事（报名为演示原型）' },
-  courses: { title: '课程', sub: '仅展示与报名原型 · 不接入支付' },
+  courses: { title: '课程', sub: '服务端价格 · 报名 / 模拟支付（不接入真实支付）' },
   athletes: { title: '运动员', sub: '演示人物 · 核验状态为模拟' },
   mentors: { title: '教练 / 导师', sub: '均需平台审核（状态为模拟）' },
   orgs: { title: '体育学校 / 俱乐部 / 场馆', sub: '公开信息展示（演示）' },
@@ -20,8 +20,44 @@ const TITLES: Record<string, { title: string; sub: string }> = {
   'my-follows': { title: '我的关注', sub: '服务端权威 · 双端同步（切换身份不丢失）' },
   'my-favs': { title: '我的收藏', sub: '服务端权威 · 双端同步（切换身份不丢失）' },
   'my-courses': { title: '我的课程', sub: '课程报名记录（服务端权威）' },
+  'my-orders': { title: '我的订单', sub: '课程订单 · 模拟支付 / 模拟退款（服务端权威）' },
+  'my-reviews': { title: '我的评价', sub: '本人发表的课程评价（含隐藏状态）' },
   'my-events': { title: '我的赛事报名', sub: '赛事报名记录（服务端权威）' },
   'my-history': { title: '浏览历史', sub: '最近浏览的内容 / 课程 / 赛事 / 人物（服务端权威，仅本人可见）' },
+}
+
+interface MyOrderRow {
+  id: string
+  order_no: string
+  course_id: string
+  course_name: string
+  status: 'created' | 'paid' | 'refund_requested' | 'refunded' | 'cancelled'
+  amount_cents: number
+  platform_fee_cents: number
+  mentor_amount_cents: number
+  fee_rate_snapshot: string
+  refund_reason: string | null
+  created_at: string
+  paid_at: string | null
+  version: number
+}
+
+interface MyReviewRow {
+  id: string
+  course_id: string
+  course_name: string
+  rating: number
+  comment: string | null
+  status: 'visible' | 'hidden'
+  created_at: string
+}
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  created: '待支付（模拟）',
+  paid: '已支付',
+  refund_requested: '退款申请中',
+  refunded: '已退款',
+  cancelled: '已取消',
 }
 
 type MyEnrollRow = { id: string; course_id: string; status: string; course_name: string; class_name: string | null; created_at: string }
@@ -33,12 +69,33 @@ export default function ListPage() {
   const nav = useNavigate()
   const follows = useApp((s) => s.follows)
   const favs = useApp((s) => s.favs)
+  const pushToast = useApp((s) => s.pushToast)
   const meta = TITLES[type]
   const isApi = DATA_SOURCE === 'api'
   // E-2 扩展：我的课程/赛事报名（API 模式拉本人记录，self 数据范围由服务端保证）
   const [enrolls, setEnrolls] = useState<MyEnrollRow[] | null>(null)
   const [regs, setRegs] = useState<MyRegRow[] | null>(null)
   const [histories, setHistories] = useState<MyHistoryRow[] | null>(null)
+  // F-2/F-3：我的订单 / 我的评价（服务端权威）
+  const [orders, setOrders] = useState<MyOrderRow[] | null>(null)
+  const [myReviews, setMyReviews] = useState<MyReviewRow[] | null>(null)
+  const [refundTarget, setRefundTarget] = useState<MyOrderRow | null>(null)
+  const [refundReason, setRefundReason] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const loadOrders = useCallback(async () => {
+    try {
+      const d = await api<{ data: MyOrderRow[] }>('GET', '/orders?mine=1&page_size=50')
+      setOrders(d.data)
+    } catch { setOrders([]) }
+  }, [])
+
+  const loadMyReviews = useCallback(async () => {
+    try {
+      const d = await api<{ data: MyReviewRow[] }>('GET', '/reviews/mine')
+      setMyReviews(d.data)
+    } catch { setMyReviews([]) }
+  }, [])
 
   useEffect(() => {
     if (!isApi) return
@@ -55,9 +112,42 @@ export default function ListPage() {
       api<{ data: MyHistoryRow[] }>('GET', '/history/mine?page_size=50')
         .then((d) => { if (!removed) setHistories(d.data) })
         .catch(() => { if (!removed) setHistories([]) })
+    } else if (type === 'my-orders') {
+      void loadOrders()
+    } else if (type === 'my-reviews') {
+      void loadMyReviews()
     }
     return () => { removed = true }
-  }, [type, isApi])
+  }, [type, isApi, loadOrders, loadMyReviews])
+
+  const payOrder = async (o: MyOrderRow) => {
+    if (busy) return
+    setBusy(true)
+    try {
+      await api('POST', `/orders/${o.id}/actions`, { action: 'mock_pay', version: o.version })
+      pushToast('模拟支付成功，报名已自动通过')
+      await loadOrders()
+    } catch (e) {
+      pushToast((e as Error).message)
+    } finally { setBusy(false) }
+  }
+
+  const submitRefund = async () => {
+    if (!refundTarget || busy) return
+    if (!refundReason.trim()) { pushToast('请填写退款原因'); return }
+    setBusy(true)
+    try {
+      await api('POST', `/orders/${refundTarget.id}/actions`, {
+        action: 'request_refund', reason: refundReason.trim(), version: refundTarget.version,
+      })
+      pushToast('退款申请已提交，等待导师/机构处理')
+      setRefundTarget(null)
+      setRefundReason('')
+      await loadOrders()
+    } catch (e) {
+      pushToast((e as Error).message)
+    } finally { setBusy(false) }
+  }
 
   if (!meta) return <EmptyState title="页面不存在" />
 
@@ -233,6 +323,82 @@ export default function ListPage() {
         <div className="t-mini mt8">学习进度为课程交易（阶段五 F）规划能力，当前展示报名与审核状态。</div>
       </div>
     )
+  } else if (type === 'my-orders') {
+    body = !isApi ? (
+      <EmptyState title="演示模式" desc="订单能力依赖共享 API（服务端权威），Mock 数据源下不提供。" icon="order" />
+    ) : orders === null ? (
+      <EmptyState title="加载中" desc="正在读取本人订单。" icon="clock" />
+    ) : orders.length === 0 ? (
+      <EmptyState title="暂无订单" desc="在付费课程详情页下单并完成模拟支付后，订单会显示在这里。" icon="order" />
+    ) : (
+      <div className="list">
+        {orders.map((o) => (
+          <div key={o.id} className="card">
+            <div className="flex" style={{ justifyContent: 'space-between', gap: 8 }}>
+              <span className="t-title" style={{ fontSize: 14 }}>{o.course_name || '课程'}</span>
+              <span className={`badge ${o.status === 'paid' ? 'badge-verified' : o.status === 'refunded' ? 'badge-unverified' : o.status === 'created' ? 'badge-blue' : 'badge-pending'}`}>
+                {ORDER_STATUS_LABEL[o.status] || o.status}
+              </span>
+            </div>
+            <div className="t-mini mt4">订单号 {o.order_no} · {o.created_at.slice(0, 16).replace('T', ' ')}</div>
+            <div className="flex mt8" style={{ justifyContent: 'space-between' }}>
+              <span className="t-sub">实付 <b style={{ color: 'var(--brand)' }}>¥{(o.amount_cents / 100).toFixed(2)}</b></span>
+              <span className="t-mini">平台费 ¥{(o.platform_fee_cents / 100).toFixed(2)} · 导师 ¥{(o.mentor_amount_cents / 100).toFixed(2)}</span>
+            </div>
+            {o.refund_reason && <div className="t-mini mt4">退款原因：{o.refund_reason}</div>}
+            <div className="flex gap8 mt12">
+              {o.status === 'created' && (
+                <button className="btn btn-primary btn-sm" style={{ flex: 1 }} disabled={busy} onClick={() => payOrder(o)}>
+                  去支付（模拟）
+                </button>
+              )}
+              {o.status === 'paid' && (
+                <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => setRefundTarget(o)}>
+                  申请退款
+                </button>
+              )}
+              {o.status === 'refund_requested' && (
+                <span className="t-mini" style={{ alignSelf: 'center' }}>等待导师/机构处理退款申请</span>
+              )}
+              {['refunded', 'cancelled'].includes(o.status) && (
+                <button className="btn btn-primary btn-sm" style={{ flex: 1 }} onClick={() => nav(`/course/${o.course_id}`)}>
+                  重新购买
+                </button>
+              )}
+              <button className="btn btn-ghost btn-sm" style={{ flex: 1 }} onClick={() => nav(`/course/${o.course_id}`)}>
+                课程详情
+              </button>
+            </div>
+          </div>
+        ))}
+        <div className="t-mini mt8">支付与退款均为模拟口径，不接入真实支付网关；金额与状态由服务端权威计算。</div>
+      </div>
+    )
+  } else if (type === 'my-reviews') {
+    body = !isApi ? (
+      <EmptyState title="演示模式" desc="评价能力依赖共享 API（服务端权威），Mock 数据源下不提供。" icon="review" />
+    ) : myReviews === null ? (
+      <EmptyState title="加载中" desc="正在读取我的评价。" icon="clock" />
+    ) : myReviews.length === 0 ? (
+      <EmptyState title="暂无评价" desc="完成课程支付后，可在课程详情页发表评价。" icon="review" />
+    ) : (
+      <div className="list">
+        {myReviews.map((r) => (
+          <div key={r.id} className="card">
+            <div className="flex" style={{ justifyContent: 'space-between' }}>
+              <span className="t-title" style={{ fontSize: 14 }}>{r.course_name}</span>
+              <span className={`badge ${r.status === 'visible' ? 'badge-verified' : 'badge-unverified'}`}>
+                {r.status === 'visible' ? '可见' : '已隐藏'}
+              </span>
+            </div>
+            <div className="mt4" style={{ color: '#F5A623' }}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</div>
+            {r.comment && <div className="t-sub mt4">{r.comment}</div>}
+            <div className="t-mini mt8">{r.created_at.slice(0, 10)} · 仅本人可查看隐藏状态</div>
+            <button className="btn btn-ghost btn-sm btn-block mt12" onClick={() => nav(`/course/${r.course_id}`)}>课程详情</button>
+          </div>
+        ))}
+      </div>
+    )
   } else if (type === 'my-events') {
     body = !isApi ? (
       (() => {
@@ -335,6 +501,31 @@ export default function ListPage() {
         {body}
         <MockFooter />
       </div>
+
+      {refundTarget && (
+        <>
+          <div className="sheet-mask" onClick={() => setRefundTarget(null)} />
+          <div className="sheet">
+            <div className="sheet-head">
+              <span className="sh-title">申请退款（模拟）</span>
+              <button className="btn btn-ghost btn-sm" onClick={() => setRefundTarget(null)}>关闭</button>
+            </div>
+            <div className="t-sub">{refundTarget.course_name} · 订单 {refundTarget.order_no}</div>
+            <div className="t-mini mt4">实付 ¥{(refundTarget.amount_cents / 100).toFixed(2)}；退款需导师/机构在 PC 端审核，当前为模拟流程。</div>
+            <textarea
+              className="input mt12"
+              style={{ width: '100%', minHeight: 80, resize: 'vertical' }}
+              maxLength={200}
+              placeholder="请填写退款原因（必填，写入订单与审计）"
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
+            />
+            <button className="btn btn-primary btn-block mt16" disabled={busy} onClick={submitRefund}>
+              {busy ? '提交中…' : '提交退款申请'}
+            </button>
+          </div>
+        </>
+      )}
     </>
   )
 }

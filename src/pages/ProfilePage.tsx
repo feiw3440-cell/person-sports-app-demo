@@ -28,10 +28,10 @@ const FUNCS: { glyph: FuncGlyphType; label: string; to?: string; toast?: string 
   { glyph: 'favs', label: '我的收藏', to: '/list/my-favs' },
   { glyph: 'heart', label: '我的关注', to: '/list/my-follows' },
   { glyph: 'history', label: '浏览历史', to: '/list/my-history' },
-  { glyph: 'order', label: '我的订单', toast: '「我的订单」属于未来交易能力，本阶段为原型占位（PRD 范围排除项）' },
+  { glyph: 'order', label: '我的订单', to: '/list/my-orders' },
   { glyph: 'handshake', label: '我的师徒', to: '/mentorship' },
   { glyph: 'auth', label: '我的授权', to: '/mentorship' },
-  { glyph: 'review', label: '我的评价', toast: '「我的评价」为演示原型入口' },
+  { glyph: 'review', label: '我的评价', to: '/list/my-reviews' },
   { glyph: 'wallet', label: '我的钱包', toast: '「我的钱包」属于未来交易能力，本阶段为原型占位（PRD 范围排除项）' },
   { glyph: 'gear', label: '设置中心', toast: '「设置中心」为演示原型入口' },
 ]
