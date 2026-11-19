@@ -24,7 +24,11 @@ export default function PublishPage() {
   const [topics, setTopics] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [submitErr, setSubmitErr] = useState('')
-  const canTeach = role.type === 'coach' || role.type === 'mentor'
+  // P2-04：发布权限以服务端 RBAC 为准（contents.write 仅 coach/mentor/content_editor 持有；
+  // APP 角色映射中仅 coach/mentor 具备）。普通/学员/运动员/机构/平台管理角色均无 contents.write。
+  // 不通过给普通用户放权消除 403，而是据实修正文案与入口；服务端逐请求 403 保持不变。
+  const canPublish = role.type === 'coach' || role.type === 'mentor'
+  const apiNoPerm = DATA_SOURCE === 'api' && !canPublish
 
   const TYPE_CARDS: { key: PubType; label: string; desc: string; icon: string }[] = [
     { key: 'post', label: '动态图文', desc: '训练日常 · 心得 · 见闻', icon: 'doc' },
@@ -34,6 +38,11 @@ export default function PublishPage() {
 
   /** API 模式：创建草稿 + 作者提审（服务端权威；通过平台审核后进入发现页） */
   const publish = async () => {
+    // 无权限时客户端先行据实拦截；服务端仍逐请求校验 403（不放宽权限、不静默吞错）
+    if (apiNoPerm) {
+      setSubmitErr('当前身份无发布权限：内容发布需教练 / 导师身份（可在「身份管理」中切换）')
+      return
+    }
     if (!title.trim()) return pushToast('先给内容起个标题吧')
     setSubmitting(true)
     setSubmitErr('')
@@ -88,21 +97,33 @@ export default function PublishPage() {
           <span className="pub-identity-badge">
             <Icon name="user" size={11} /> {ROLE_LABEL[role.type] || role.label}
           </span>
-          当前身份可发布「动态图文 / 视频作品」；教学内容需
-          <b> 教练 / 导师 </b>身份（可在身份管理中切换）
+          {DATA_SOURCE === 'api' ? (
+            canPublish ? (
+              <>当前身份可发布全部内容类型（动态图文 / 视频作品 / 教学内容）</>
+            ) : (
+              <>
+                当前身份<b>无内容发布权限</b>：内容发布需教练 / 导师身份（可在「身份管理」中切换）
+              </>
+            )
+          ) : (
+            <>
+              当前身份可发布「动态图文 / 视频作品」；教学内容需<b> 教练 / 导师 </b>身份（演示）
+            </>
+          )}
         </div>
 
         {/* 发布类型 */}
         <div className="pub-type-grid">
           {TYPE_CARDS.map((t) => {
-            const locked = t.key === 'teach' && !canTeach
+            // P2-04：API 模式无 contents.write 时全部类型加锁；Mock 模式仅教学内容保持演示锁
+            const locked = t.key === 'teach' ? !canPublish : apiNoPerm
             return (
               <button
                 key={t.key}
                 className={`pub-type-card ${type === t.key ? 'active' : ''} ${locked ? 'locked' : ''}`}
                 onClick={() => {
                   if (locked) {
-                    pushToast('教学内容发布需教练 / 导师身份，可在「身份管理」中切换（演示）')
+                    pushToast('内容发布需教练 / 导师身份，可在「身份管理」中切换（服务端权限校验）')
                     return
                   }
                   setType(t.key)
@@ -177,10 +198,15 @@ export default function PublishPage() {
           </div>
         </div>
 
-        {/* 发布按钮 */}
-        <button className="pub-submit" disabled={submitting} onClick={() => void publish()}>
-          <Icon name="flash" size={18} /> {submitting ? '提交中…' : '发布'}
+        {/* 发布按钮：无发布权限时禁用入口并据实说明（不放宽权限、不隐藏服务端 403） */}
+        <button className="pub-submit" disabled={submitting || apiNoPerm} onClick={() => void publish()}>
+          <Icon name="flash" size={18} /> {submitting ? '提交中…' : apiNoPerm ? '无发布权限' : '发布'}
         </button>
+        {apiNoPerm && (
+          <div className="t-mini center mt8" style={{ color: '#c0392b' }}>
+            当前身份无发布权限（服务端 contents.write 校验），切换为教练 / 导师身份后可发布
+          </div>
+        )}
         {submitErr && (
           <div className="t-mini center mt8" style={{ color: '#c0392b' }}>
             {submitErr}

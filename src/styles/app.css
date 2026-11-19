@@ -402,6 +402,11 @@ ul {
   border: 1px dashed #c7d1de;
   font-weight: 600;
 }
+/* P2-05：已取消报名历史——中性灰底，明确区分「已取消」与「审核中」 */
+.badge-cancelled {
+  background: #f1f4f9;
+  color: var(--ink-3);
+}
 .badge-brand {
   background: var(--brand);
   color: #fff;

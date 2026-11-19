@@ -308,8 +308,8 @@ export default function ListPage() {
               <span className="t-title" style={{ fontSize: 14 }}>
                 {e.course_name}
               </span>
-              <span className={`badge ${e.status === 'approved' ? 'badge-verified' : e.status === 'rejected' ? 'badge-unverified' : 'badge-pending'}`}>
-                {e.status === 'approved' ? '已通过' : e.status === 'rejected' ? '未通过' : '审核中'}
+              <span className={`badge ${e.status === 'approved' ? 'badge-verified' : e.status === 'rejected' ? 'badge-unverified' : e.status === 'cancelled' ? 'badge-cancelled' : 'badge-pending'}`}>
+                {e.status === 'approved' ? '已通过' : e.status === 'rejected' ? '未通过' : e.status === 'cancelled' ? '已取消' : '审核中'}
               </span>
             </div>
             <div className="t-mini mt4">
