@@ -54,7 +54,7 @@ export default function ProjectDetail() {
             <button
               className={`btn btn-sm ${favOn ? 'btn-ghost-gray' : 'btn-ghost'}`}
               onClick={() => {
-                const next = toggleFav(p.id)
+                const next = toggleFav(p.id, 'project')
                 pushToast(next ? '已收藏项目（服务端同步）' : '已取消收藏')
               }}
             >

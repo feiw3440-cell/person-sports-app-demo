@@ -12,6 +12,15 @@ interface Toast {
   msg: string
 }
 
+/** P2-03：reaction 多态目标类型（与服务端 /interactions/reactions 一致） */
+export type ReactionTarget = 'content' | 'project'
+interface ReactionRow {
+  target_type?: string
+  target_id?: string
+  content_id?: string // 兼容旧服务端字段
+  kind: string
+}
+
 interface AppState {
   currentRoleId: string
   follows: Record<string, boolean>
@@ -23,14 +32,14 @@ interface AppState {
 
   switchRole: (roleId: string) => void
   toggleFollow: (id: string) => boolean
-  toggleLike: (id: string) => boolean
-  toggleFav: (id: string) => boolean
+  toggleLike: (id: string, targetType?: ReactionTarget) => boolean
+  toggleFav: (id: string, targetType?: ReactionTarget) => boolean
   markRead: (id: string) => void
   setApplyStatus: (st: AppState['mentorApplyStatus']) => void
   pushToast: (msg: string) => void
   removeToast: (id: number) => void
   /** E-2：登录水合时用服务端权威互动数据回填本地状态（修复刷新即丢的断裂链路） */
-  hydrateInteractions: (my: { follows?: { target_type: string; target_id: string }[]; reactions?: { content_id: string; kind: string }[] }) => void
+  hydrateInteractions: (my: { follows?: { target_type: string; target_id: string }[]; reactions?: ReactionRow[] }) => void
 }
 
 let toastSeq = 1
@@ -82,11 +91,11 @@ export const useApp = create<AppState>()(
         return next
       },
 
-      toggleLike: (id) => {
+      toggleLike: (id, targetType = 'content') => {
         const next = !get().likes[id]
         set({ likes: { ...get().likes, [id]: next } })
         if (isApi()) {
-          api('POST', '/interactions/reactions', { content_id: id, kind: 'like' }).catch(() => {
+          api('POST', '/interactions/reactions', { target_type: targetType, target_id: id, kind: 'like' }).catch(() => {
             set({ likes: { ...get().likes, [id]: !next } })
             get().pushToast('网络异常，点赞未生效（已回滚）')
           })
@@ -94,11 +103,11 @@ export const useApp = create<AppState>()(
         return next
       },
 
-      toggleFav: (id) => {
+      toggleFav: (id, targetType = 'content') => {
         const next = !get().favs[id]
         set({ favs: { ...get().favs, [id]: next } })
         if (isApi()) {
-          api('POST', '/interactions/reactions', { content_id: id, kind: 'fav' }).catch(() => {
+          api('POST', '/interactions/reactions', { target_type: targetType, target_id: id, kind: 'fav' }).catch(() => {
             set({ favs: { ...get().favs, [id]: !next } })
             get().pushToast('网络异常，收藏未生效（已回滚）')
           })
@@ -117,8 +126,11 @@ export const useApp = create<AppState>()(
         const favs: Record<string, boolean> = {}
         const likes: Record<string, boolean> = {}
         for (const r of my.reactions || []) {
-          if (r.kind === 'fav') favs[r.content_id] = true
-          if (r.kind === 'like') likes[r.content_id] = true
+          // P2-03：多态目标键取 target_id（兼容旧 content_id 字段）；本项目 content=ct_/project=p_ 前缀不冲突
+          const key = (r as ReactionRow).target_id ?? (r as ReactionRow).content_id
+          if (!key) continue
+          if (r.kind === 'fav') favs[key] = true
+          if (r.kind === 'like') likes[key] = true
         }
         set({ follows, favs, likes })
       },

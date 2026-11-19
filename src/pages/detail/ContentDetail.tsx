@@ -117,8 +117,8 @@ export default function ContentDetail() {
             className="flex gap6"
             style={{ color: likeOn ? 'var(--coral)' : 'var(--ink-2)', fontWeight: 700 }}
             onClick={() => {
-              const next = toggleLike(c.id)
-              pushToast(next ? '已点赞（演示状态）' : '已取消点赞（演示状态）')
+              const next = toggleLike(c.id, 'content')
+              pushToast(next ? '已点赞（服务端同步）' : '已取消点赞')
             }}
           >
             <Icon name="heart" size={20} filled={likeOn} />
@@ -128,7 +128,7 @@ export default function ContentDetail() {
             className="flex gap6"
             style={{ color: favOn ? 'var(--orange)' : 'var(--ink-2)', fontWeight: 700 }}
             onClick={() => {
-              const next = toggleFav(c.id)
+              const next = toggleFav(c.id, 'content')
               pushToast(next ? '已收藏（服务端同步，可在「我的收藏」查看）' : '已取消收藏')
             }}
           >

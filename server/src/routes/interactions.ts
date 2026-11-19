@@ -4,19 +4,26 @@ import { requireAuth } from '../auth'
 import { db } from '../db'
 import { err, newId, nowISO } from '../util'
 
+/** P2-03：reaction 支持多态目标（content / project），与 follows 设计一致 */
+const REACTION_TARGETS = ['content', 'project'] as const
+type ReactionTarget = (typeof REACTION_TARGETS)[number]
+
+/** 路由层校验目标存在（迁移 007 后 reactions 无外键，改由此保证无悬空数据） */
+function assertTargetExists(targetType: ReactionTarget, targetId: string): void {
+  const table = targetType === 'content' ? 'contents' : 'sports_projects'
+  const row = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(targetId)
+  if (!row) throw err.validation(`${targetType === 'content' ? '内容' : '项目'}不存在`)
+}
+
 function countsFor(targetType: string, targetId: string) {
   const followers =
     targetType === 'profile' || targetType === 'project' || targetType === 'org' || targetType === 'content'
       ? (db.prepare('SELECT COUNT(*) AS c FROM follows WHERE target_type = ? AND target_id = ?').get(targetType, targetId) as { c: number }).c
       : 0
-  const likes =
-    targetType === 'content'
-      ? (db.prepare("SELECT COUNT(*) AS c FROM reactions WHERE content_id = ? AND kind = 'like'").get(targetId) as { c: number }).c
-      : 0
-  const favs =
-    targetType === 'content'
-      ? (db.prepare("SELECT COUNT(*) AS c FROM reactions WHERE content_id = ? AND kind = 'fav'").get(targetId) as { c: number }).c
-      : 0
+  const reactionsCount = (kind: string) =>
+    (db.prepare('SELECT COUNT(*) AS c FROM reactions WHERE target_type = ? AND target_id = ? AND kind = ?').get(targetType, targetId, kind) as { c: number }).c
+  const likes = REACTION_TARGETS.includes(targetType as ReactionTarget) ? reactionsCount('like') : 0
+  const favs = REACTION_TARGETS.includes(targetType as ReactionTarget) ? reactionsCount('fav') : 0
   const comments =
     targetType === 'content'
       ? (db.prepare("SELECT COUNT(*) AS c FROM comments WHERE content_id = ? AND status = 'visible'").get(targetId) as { c: number }).c
@@ -32,7 +39,7 @@ export async function interactionRoutes(app: FastifyInstance): Promise<void> {
       .prepare('SELECT target_type, target_id, created_at FROM follows WHERE account_id = ? ORDER BY created_at DESC')
       .all(ctx.accountId)
     const reactions = db
-      .prepare('SELECT content_id, kind, created_at FROM reactions WHERE account_id = ? ORDER BY created_at DESC')
+      .prepare('SELECT target_type, target_id, kind, created_at FROM reactions WHERE account_id = ? ORDER BY created_at DESC')
       .all(ctx.accountId)
     return reply.send({ data: { follows, reactions }, meta: {} })
   })
@@ -67,22 +74,37 @@ export async function interactionRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ data: { followed: true, target_type, target_id, ...countsFor(target_type, target_id) } })
   })
 
-  /* 点赞 / 收藏（内容；幂等 toggle） */
+  /* 点赞 / 收藏（多态目标 content/project；幂等 toggle；P2-03） */
   app.post('/interactions/reactions', async (req, reply) => {
     const ctx = requireAuth(req)
-    const { content_id, kind } = (req.body ?? {}) as { content_id: string; kind: 'like' | 'fav' }
+    const body = (req.body ?? {}) as { target_type?: string; target_id?: string; content_id?: string; kind?: string }
+    const kind = body.kind as 'like' | 'fav'
     if (!['like', 'fav'].includes(kind)) throw err.validation('kind 非法')
+    // 兼容旧客户端：缺省 target_type=content，content_id 作为 target_id
+    const targetType = (body.target_type ?? 'content') as ReactionTarget
+    if (!REACTION_TARGETS.includes(targetType)) throw err.validation('target_type 非法')
+    const targetId = body.target_id ?? body.content_id
+    if (!targetId) throw err.validation('缺少 target_id')
+    assertTargetExists(targetType, targetId) // 无外键后由路由校验目标存在，避免悬空数据
+
     const dup = db
-      .prepare('SELECT id FROM reactions WHERE content_id = ? AND account_id = ? AND kind = ?')
-      .get(content_id, ctx.accountId, kind) as { id: string } | undefined
+      .prepare('SELECT id FROM reactions WHERE target_type = ? AND target_id = ? AND account_id = ? AND kind = ?')
+      .get(targetType, targetId, ctx.accountId, kind) as { id: string } | undefined
     if (dup) {
       db.prepare('DELETE FROM reactions WHERE id = ?').run(dup.id)
-      return reply.send({ data: { active: false, content_id, kind, ...countsFor('content', content_id) } })
+      auditLite(ctx, 'un' + kind, targetType, targetId)
+      return reply.send({ data: { active: false, target_type: targetType, target_id: targetId, kind, ...countsFor(targetType, targetId) } })
     }
-    db.prepare('INSERT INTO reactions(id, content_id, account_id, kind, created_at) VALUES (?, ?, ?, ?, ?)').run(
-      newId('rc_'), content_id, ctx.accountId, kind, nowISO(),
-    )
-    return reply.send({ data: { active: true, content_id, kind, ...countsFor('content', content_id) } })
+    try {
+      db.prepare('INSERT INTO reactions(id, target_type, target_id, account_id, kind, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+        newId('rc_'), targetType, targetId, ctx.accountId, kind, nowISO(),
+      )
+    } catch (e) {
+      // 并发重复点击：唯一约束兜底，视为已生效，不返回 500
+      if ((e as { code?: string }).code !== 'SQLITE_CONSTRAINT_UNIQUE') throw e
+    }
+    auditLite(ctx, kind, targetType, targetId)
+    return reply.send({ data: { active: true, target_type: targetType, target_id: targetId, kind, ...countsFor(targetType, targetId) } })
   })
 
   /* 内容评论：列表 + 发表（幂等键见请求头 Idempotency-Key，由全局幂等逻辑处理） */
