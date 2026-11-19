@@ -41,7 +41,7 @@ async function doRefresh(refreshToken: string): Promise<string | null> {
   return json.data.access_token as string
 }
 
-export async function api<T = Obj>(method: string, path: string, opts: { body?: unknown; idempotencyKey?: string } = {}): Promise<T> {
+export async function api<T = Obj>(method: string, path: string, opts: { body?: unknown; idempotencyKey?: string; raw?: boolean } = {}): Promise<T> {
   const tokens = getToken()
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (tokens?.access) headers.Authorization = `Bearer ${tokens.access}`
@@ -72,10 +72,13 @@ export async function api<T = Obj>(method: string, path: string, opts: { body?: 
     const err = (json.error ?? {}) as Obj
     throw new ApiError(res.status, err.code ?? 'UNKNOWN', err.message ?? '请求失败', err.details)
   }
-  return (json.data !== undefined ? json.data : json) as T
+  // 默认解包 data；raw=true 保留 { data, meta } 等完整响应（列表分页/附加汇总用）
+  return (opts.raw ? json : json.data !== undefined ? json.data : json) as T
 }
 
 export const get = <T = Obj>(path: string) => api<T>('GET', path)
+/** 保留完整响应体（含 meta/total/mentors 等附加字段） */
+export const getRaw = <T = Obj>(path: string) => api<T>('GET', path, { raw: true })
 export const post = <T = Obj>(path: string, body?: unknown, idempotencyKey?: string) => api<T>('POST', path, { body, idempotencyKey })
 export const patch = <T = Obj>(path: string, body?: unknown) => api<T>('PATCH', path, { body })
 export const del = <T = Obj>(path: string) => api<T>('DELETE', path)

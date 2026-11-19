@@ -12,6 +12,8 @@ import CompetitionsPage from '@/pages/CompetitionsPage'
 import OrgsPage from '@/pages/OrgsPage'
 import ContentsPage from '@/pages/ContentsPage'
 import AnalyticsPage from '@/pages/AnalyticsPage'
+import OrdersPage from '@/pages/OrdersPage'
+import RevenuePage from '@/pages/RevenuePage'
 import AdminPage from '@/pages/AdminPage'
 import SettingsPage from '@/pages/SettingsPage'
 import SearchPage from '@/pages/SearchPage'
@@ -43,6 +45,8 @@ export default function App() {
         <Route path="/orgs/:id" element={<OrgsPage />} />
         <Route path="/contents" element={<ContentsPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/commerce/orders" element={<OrdersPage />} />
+        <Route path="/commerce/revenue" element={<RevenuePage />} />
         <Route path="/admin" element={<AdminPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/search" element={<SearchPage />} />

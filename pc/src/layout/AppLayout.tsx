@@ -6,7 +6,7 @@ import {
   DashboardOutlined, ApartmentOutlined, TeamOutlined, ReadOutlined, TrophyOutlined,
   FlagOutlined, BankOutlined, FileTextOutlined, BarChartOutlined, SettingOutlined,
   BellOutlined, SearchOutlined, UserOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  SafetyOutlined,
+  SafetyOutlined, ShoppingCartOutlined, WalletOutlined,
 } from '@ant-design/icons'
 import { get, patch, post } from '@/api/client'
 import { useAuth, hasPerm } from '@/store/auth'
@@ -42,6 +42,8 @@ export default function AppLayout() {
     if (hasPerm('competitions.read')) items.push({ key: '/competitions', icon: <FlagOutlined />, label: '赛事活动' })
     items.push({ key: '/orgs', icon: <BankOutlined />, label: '机构与组织' })
     if (hasPerm('contents.read')) items.push({ key: '/contents', icon: <FileTextOutlined />, label: '内容与影响力' })
+    if (hasPerm('orders.read')) items.push({ key: '/commerce/orders', icon: <ShoppingCartOutlined />, label: '订单管理' })
+    if (hasPerm('revenue.read')) items.push({ key: '/commerce/revenue', icon: <WalletOutlined />, label: '收入与结算' })
     if (hasPerm('analytics.read')) items.push({ key: '/analytics', icon: <BarChartOutlined />, label: '数据分析' })
     if (hasPerm('admin.read')) items.push({ key: '/admin', icon: <SettingOutlined />, label: '系统管理' })
     return items
