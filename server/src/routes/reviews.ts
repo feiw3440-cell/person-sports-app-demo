@@ -4,6 +4,7 @@
 //   * 同一课程同一账号仅一条评价；同一订单仅一条（DB 唯一约束兜底）
 //   * 公开列表只返回 visible；隐藏/恢复由课程导师、所属组织管理员或平台管理员操作
 //   * 评价聚合只统计 visible，课程详情返回真实 review_count/rating_avg（不伪造）
+//   * P2-01：订单退款后关联评价置为 refunded——原文保留（本人可见/管理可查），但不计入公开评分；终态不可恢复为 visible
 import type { FastifyInstance } from 'fastify'
 import { requireAuth, type AuthContext } from '../auth'
 import { db } from '../db'
@@ -135,7 +136,7 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
       throw err.validation('请指定 course_id（仅平台角色可跨课程查看）')
     }
     if (q.status) {
-      if (!['visible', 'hidden'].includes(q.status)) throw err.validation('status 不合法')
+      if (!['visible', 'hidden', 'refunded'].includes(q.status)) throw err.validation('status 不合法')
       where.push('r.status = ?'); args.push(q.status)
     }
     const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
@@ -159,6 +160,10 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     if (!b.reason || !b.reason.trim()) throw err.validation('隐藏/恢复评价须填写原因（留痕）')
     const row = db.prepare('SELECT * FROM reviews WHERE id = ?').get(id) as Record<string, unknown> | undefined
     if (!row) throw err.notFound('评价不存在')
+    // P2-01：退款导致的不计分评价为终态，不可恢复为 visible（否则会让退款订单评价重新计入评分）
+    if (row.status === 'refunded' && b.status === 'visible') {
+      throw err.state('该评价因关联订单退款已不计入评分，不能恢复为可见')
+    }
     const course = db.prepare('SELECT id, name, mentor_account_id, org_id, status FROM courses WHERE id = ?').get(row.course_id as string) as CourseRow
     if (!canModerateCourse(ctx, course)) throw err.forbidden()
     assertVersion(row as { version: number }, b.version)

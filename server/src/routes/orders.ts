@@ -209,7 +209,41 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
       const settled = db.prepare('SELECT 1 FROM settlement_items WHERE order_id = ?').get(id)
       if (settled) throw err.state('该订单已结算，不能直接退款（需走结算冲正流程，待产品决策）')
       db.prepare("UPDATE orders SET status = ?, refunded_at = ?, refund_reason = ?, updated_at = ?, version = version + 1 WHERE id = ?").run(result.after, now, reason ?? null, now, id)
-      writeLedger(id, [{ type: 'refund', amount: order.amount_cents as number, memo: '退款（全额，模拟口径）｜原因：' + (reason ?? '') }])
+
+      // P2-02：退款账面拆分——用户全额退款 + 平台服务费冲减 + 导师收入冲减（方向以 entry_type 表达，金额均为正数）。
+      // 幂等：预检查 + 部分唯一索引 ux_ledger_refund_once 双重保护；并发/重复退款不产生重复账目。
+      const hasRefundLedger = db.prepare(
+        "SELECT 1 FROM ledger_entries WHERE order_id = ? AND entry_type IN ('refund','platform_fee_refund','mentor_income_refund') LIMIT 1",
+      ).get(id)
+      if (!hasRefundLedger) {
+        try {
+          writeLedger(id, [
+            { type: 'refund', amount: order.amount_cents as number, memo: '退款（全额，模拟口径）｜原因：' + (reason ?? '') },
+            { type: 'platform_fee_refund', amount: order.platform_fee_cents as number, memo: `平台服务费冲减（费率快照 ${feeRatePercent(Number(order.fee_rate_snapshot))}，退款回冲）` },
+            { type: 'mentor_income_refund', amount: order.mentor_amount_cents as number, memo: '导师收入冲减（订单快照分成，退款回冲）' },
+          ])
+        } catch (e) {
+          // 并发下另一请求已写入冲减流水：唯一索引兜底，视为幂等成功（不重复记账）
+          if ((e as { code?: string }).code !== 'SQLITE_CONSTRAINT_UNIQUE') throw e
+        }
+      }
+
+      // P2-01：该订单关联评价若为 visible，改为 refunded——原文保留（不物理删除）、不计入公开评分、留审计。
+      // 公开列表与课程详情评分仅统计 status='visible'，故 refunded 自动被排除；hidden 状态评价不动。
+      const review = db.prepare('SELECT id, status FROM reviews WHERE order_id = ?').get(id) as { id: string; status: string } | undefined
+      if (review && review.status === 'visible') {
+        db.prepare("UPDATE reviews SET status='refunded', updated_at=?, version=version+1 WHERE id=?").run(now, review.id)
+        audit(ctx, {
+          action: 'review.refund_invalidated', resourceType: 'review', resourceId: review.id,
+          before: { status: 'visible' }, after: { status: 'refunded' },
+          reason: `关联订单 ${id} 已退款，评价原文保留但不再计入评分`,
+        })
+        enqueueNotify({
+          targetAccountId: order.account_id as string, category: 'biz', kind: 'review',
+          title: '评价已不再计入评分', body: `课程「${order.course_name}」订单退款后，你的评价原文已保留但不再计入课程评分`, bizRefType: 'course', bizRefId: order.course_id as string,
+        })
+      }
+
       // 退款 → 报名撤销
       db.prepare("UPDATE enrollments SET status = 'cancelled', updated_at = ?, version = version + 1 WHERE course_id = ? AND account_id = ? AND status = 'approved'").run(now, order.course_id, order.account_id)
       audit(ctx, { action: `order.${action}`, resourceType: 'order', resourceId: id, before: { status: result.before }, after: { status: result.after }, reason })
