@@ -1,9 +1,9 @@
 // /v1/orders：课程订单（阶段五 F，模拟支付口径）
-// 原则：全部金额以「分」存储；平台服务费率 10%（演示口径，写入订单快照）；
+// 原则：全部金额以「分」存储；平台服务费率来自服务端配置（演示参数，写入订单快照）；
 // 模拟支付（mock_pay）——真实支付网关未接入，接入需单独授权；
 // 每笔资金变动写 ledger_entries（追加式，双端审计口径）。
 import type { FastifyInstance } from 'fastify'
-import { requireAuth } from '../auth'
+import { requireAuth, type AuthContext } from '../auth'
 import { db } from '../db'
 import { requirePerm } from '../rbac'
 import { audit } from '../audit'
@@ -11,12 +11,42 @@ import { applyFlow } from '../statemachine'
 import { idempotencyReplay, idempotencySave } from '../helpers'
 import { enqueueNotify, pumpOutbox } from '../outbox'
 import { err, newId, nowISO } from '../util'
-
-const PLATFORM_FEE_RATE = 0.1 // 演示口径：平台服务费 10%
+import { feeRatePercent, getPlatformFeeRate } from '../commerce'
 
 type CourseRow = {
   id: string; name: string; status: string; price_cents: number | null
   mentor_account_id: string; org_id: string | null
+}
+
+/** 分页参数（服务端夹紧，拒绝 NaN/负数/超大页） */
+function pageArgs(q: { page?: string; page_size?: string }): { page: number; pageSize: number; offset: number } {
+  const pageRaw = Number(q.page ?? 1)
+  const sizeRaw = Number(q.page_size ?? 20)
+  const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? Math.floor(pageRaw) : 1
+  const pageSize = Number.isFinite(sizeRaw) && sizeRaw >= 1 ? Math.min(Math.floor(sizeRaw), 100) : 20
+  return { page, pageSize, offset: (page - 1) * pageSize }
+}
+
+/** 订单读取范围：平台/组织/本人（导师可读自己课程的销售订单，用于退款审核与收入） */
+function orderScope(ctx: AuthContext, scope: string, mineOnly: boolean): { sql: string; args: unknown[] } | null {
+  // mine=1：APP「我的订单」只返回本人购买，不混入本人授课课程的销售订单
+  if (mineOnly) return { sql: 'o.account_id = ?', args: [ctx.accountId] }
+  if (scope === 'self') return { sql: '(o.account_id = ? OR c.mentor_account_id = ?)', args: [ctx.accountId, ctx.accountId] }
+  if (scope === 'own_org') {
+    if (!ctx.orgId) return null
+    return { sql: 'c.org_id = ?', args: [ctx.orgId] }
+  }
+  if (scope === 'granted_scope') return { sql: 'c.mentor_account_id = ?', args: [ctx.accountId] }
+  return { sql: '1 = 1', args: [] }
+}
+
+function canReadOrderLedger(ctx: AuthContext, order: { account_id: string; mentor_account_id: string; org_id: string | null }): boolean {
+  if (order.account_id === ctx.accountId) return true
+  const perm = requirePerm(ctx, 'orders', 'read')
+  if (perm.data_scope === 'platform' || perm.data_scope === 'all') return true
+  if (perm.data_scope === 'own_org') return !!order.org_id && ctx.orgId === order.org_id
+  // self / granted_scope：导师仅可查看自己课程的订单流水
+  return order.mentor_account_id === ctx.accountId
 }
 
 function writeLedger(orderId: string, entries: { type: string; amount: number; memo: string }[]): void {
@@ -50,15 +80,22 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
       | undefined
     if (dup && !['cancelled', 'refunded'].includes(dup.status)) throw err.state('已存在该课程的订单（不可重复购买）')
 
-    const fee = Math.floor(course.price_cents * PLATFORM_FEE_RATE)
+    const feeRate = getPlatformFeeRate()
+    const fee = Math.round(course.price_cents * feeRate)
     const mentorAmount = course.price_cents - fee
     const id = newId('od_')
     const orderNo = 'ZT' + Date.now().toString(36).toUpperCase() + Math.floor(Math.random() * 900 + 100)
-    db.prepare(
-      `INSERT INTO orders(id, order_no, account_id, course_id, class_id, amount_cents, platform_fee_cents, mentor_amount_cents,
-                          fee_rate_snapshot, status, mock_paid, created_at, updated_at, version)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'created', 0, ?, ?, 1)`,
-    ).run(id, orderNo, ctx.accountId, b.course_id, b.class_id ?? null, course.price_cents, fee, mentorAmount, String(PLATFORM_FEE_RATE), nowISO(), nowISO())
+    try {
+      db.prepare(
+        `INSERT INTO orders(id, order_no, account_id, course_id, class_id, amount_cents, platform_fee_cents, mentor_amount_cents,
+                            fee_rate_snapshot, status, mock_paid, created_at, updated_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'created', 0, ?, ?, 1)`,
+      ).run(id, orderNo, ctx.accountId, b.course_id, b.class_id ?? null, course.price_cents, fee, mentorAmount, String(feeRate), nowISO(), nowISO())
+    } catch (e) {
+      // 部分唯一索引兜底并发重复下单（退款/取消后可重新下单）
+      if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw err.state('已存在该课程的有效订单（不可重复购买）')
+      throw e
+    }
     audit(ctx, {
       action: 'order.create', resourceType: 'order', resourceId: id,
       after: { order_no: orderNo, course_id: b.course_id, amount_cents: course.price_cents, status: 'created' },
@@ -68,39 +105,36 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
       title: '收到新的课程订单', body: `课程「${course.name}」有新订单（待支付）`, bizRefType: 'order', bizRefId: id,
     })
     pumpOutbox()
-    const body = { data: { id, order_no: orderNo, status: 'created', amount_cents: course.price_cents, platform_fee_cents: fee, mentor_amount_cents: mentorAmount } }
+    const body = { data: { id, order_no: orderNo, status: 'created', amount_cents: course.price_cents, platform_fee_cents: fee, mentor_amount_cents: mentorAmount, fee_rate: feeRate, fee_rate_snapshot: String(feeRate), fee_rate_label: feeRatePercent(feeRate) } }
     idempotencySave(req, ctx.accountId, 201, body)
     reply.code(201)
     return reply.send(body)
   })
 
-  /* 订单列表：self=本人；org_admin=本组织课程订单；platform=全部 */
+  /* 订单列表：self=本人购买 + 本人授课课程销售；org_admin=本组织课程订单；platform=全部 */
   app.get('/orders', async (req, reply) => {
     const ctx = requireAuth(req)
-    const q = req.query as { status?: string; course_id?: string; page?: string; page_size?: string }
-    const page = Math.max(1, Number(q.page || 1))
-    const pageSize = Math.min(Number(q.page_size || 20), 100)
-    const roles = requirePerm(ctx, 'orders', 'read')
-    const where: string[] = []
-    const args: unknown[] = []
-    if (roles.data_scope === 'self') {
-      where.push('o.account_id = ?'); args.push(ctx.accountId)
-    } else if (roles.data_scope === 'own_org') {
-      if (!ctx.orgId) return reply.send({ data: [], meta: { total: 0, page, page_size: pageSize } })
-      where.push('c.org_id = ?'); args.push(ctx.orgId)
-    }
-    // platform/all：全部可见
+    const q = req.query as { status?: string; course_id?: string; mine?: string; page?: string; page_size?: string }
+    const { page, pageSize, offset } = pageArgs(q)
+    const perm = requirePerm(ctx, 'orders', 'read')
+    const scope = orderScope(ctx, perm.data_scope, q.mine === '1')
+    if (!scope) return reply.send({ data: [], meta: { total: 0, page, page_size: pageSize } })
+    const where = [scope.sql]
+    const args = [...scope.args]
     if (q.course_id) { where.push('o.course_id = ?'); args.push(q.course_id) }
     if (q.status) { where.push('o.status = ?'); args.push(q.status) }
-    const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
+    const whereSql = 'WHERE ' + where.join(' AND ')
     const total = (db.prepare(`SELECT COUNT(*) AS c FROM orders o JOIN courses c ON c.id = o.course_id ${whereSql}`).get(...args) as { c: number }).c
     const rows = db
       .prepare(
-        `SELECT o.*, c.name AS course_name, a.display_name AS account_name
+        `SELECT o.*, c.name AS course_name, c.mentor_account_id, c.org_id, a.display_name AS account_name,
+                m.display_name AS mentor_name,
+                CASE WHEN EXISTS (SELECT 1 FROM settlement_items si WHERE si.order_id = o.id) THEN 1 ELSE 0 END AS settled
          FROM orders o JOIN courses c ON c.id = o.course_id JOIN accounts a ON a.id = o.account_id
+         JOIN accounts m ON m.id = c.mentor_account_id
          ${whereSql} ORDER BY o.created_at DESC LIMIT ? OFFSET ?`,
       )
-      .all(...args, pageSize, (page - 1) * pageSize)
+      .all(...args, pageSize, offset)
     return reply.send({ data: rows, meta: { total, page, page_size: pageSize } })
   })
 
@@ -130,6 +164,9 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     } else if (action === 'request_refund') {
       if (!isOwner) throw err.forbidden('只能对本人订单申请退款')
       if (!reason) throw err.validation('申请退款须填写原因')
+      // 已结算订单不允许进入退款流程：否则会停在“退款申请中”却无法审批（冲正流程待产品决策）
+      const settled = db.prepare('SELECT 1 FROM settlement_items WHERE order_id = ?').get(id)
+      if (settled) throw err.state('该订单已结算，不能申请退款（需走结算冲正流程，待产品决策）')
     } else if (action === 'refund') {
       if (!isMentor && !isOrgAdmin && !isPlatform) throw err.forbidden('退款审核需导师 / 机构管理员 / 平台权限')
       if (!reason) throw err.validation('退款处理须填写原因（留痕）')
@@ -146,7 +183,7 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
       // 资金流水（三条，方向以 entry_type 表达；金额均为正数）
       writeLedger(id, [
         { type: 'payment', amount: order.amount_cents as number, memo: '模拟支付收款（用户）' },
-        { type: 'platform_fee', amount: order.platform_fee_cents as number, memo: '平台服务费（10% 演示口径）' },
+        { type: 'platform_fee', amount: order.platform_fee_cents as number, memo: `平台服务费（${feeRatePercent(Number(order.fee_rate_snapshot))} 演示口径，费率快照）` },
         { type: 'mentor_income', amount: order.mentor_amount_cents as number, memo: '导师收入（订单快照分成）' },
       ])
       // 已支付 → 自动创建 approved 报名（付费课程跳过人工审核）
@@ -168,6 +205,9 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     }
 
     if (action === 'refund') {
+      // 已结算订单不再允许退款：避免已结算资金出现负向结算（如需支持，应设计结算冲正单，属产品决策）
+      const settled = db.prepare('SELECT 1 FROM settlement_items WHERE order_id = ?').get(id)
+      if (settled) throw err.state('该订单已结算，不能直接退款（需走结算冲正流程，待产品决策）')
       db.prepare("UPDATE orders SET status = ?, refunded_at = ?, refund_reason = ?, updated_at = ?, version = version + 1 WHERE id = ?").run(result.after, now, reason ?? null, now, id)
       writeLedger(id, [{ type: 'refund', amount: order.amount_cents as number, memo: '退款（全额，模拟口径）｜原因：' + (reason ?? '') }])
       // 退款 → 报名撤销
@@ -196,13 +236,17 @@ export async function orderRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ data: { id, status: result.after, version: (order.version as number) + 1 } })
   })
 
-  /* 订单资金流水（本人订单或有权查看者） */
+  /* 订单资金流水（本人 / 课程导师 / 组织管理员 / 平台；按读取范围二次裁剪） */
   app.get('/orders/:id/ledger', async (req, reply) => {
     const ctx = requireAuth(req)
     const { id } = req.params as { id: string }
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id) as Record<string, unknown> | undefined
+    const order = db
+      .prepare(
+        `SELECT o.*, c.mentor_account_id, c.org_id FROM orders o JOIN courses c ON c.id = o.course_id WHERE o.id = ?`,
+      )
+      .get(id) as (Record<string, unknown> & { account_id: string; mentor_account_id: string; org_id: string | null }) | undefined
     if (!order) throw err.forbidden('订单不存在')
-    if (order.account_id !== ctx.accountId) requirePerm(ctx, 'orders', 'read')
+    if (!canReadOrderLedger(ctx, order)) throw err.forbidden('无权查看该订单流水')
     const rows = db.prepare('SELECT id, entry_type, amount_cents, memo, created_at FROM ledger_entries WHERE order_id = ? ORDER BY created_at').all(id)
     return reply.send({ data: rows, meta: { total: rows.length } })
   })

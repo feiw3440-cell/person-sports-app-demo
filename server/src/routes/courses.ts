@@ -24,10 +24,14 @@ function courseOut(id: string): Record<string, unknown> | undefined {
   const projects = db.prepare('SELECT s.id, s.name FROM course_project_links l JOIN sports_projects s ON s.id = l.project_id WHERE l.course_id = ?').all(id)
   const mentor = db.prepare('SELECT display_name FROM accounts WHERE id = ?').get(row.mentor_account_id as string) as { display_name: string } | undefined
   const org = row.org_id ? (db.prepare('SELECT name FROM organizations WHERE id = ?').get(row.org_id as string) as { name: string } | undefined) : null
+  // 评价聚合口径：仅 visible 评价（隐藏评价不计分）；无评价返回 null/0，不伪造分数
+  const rating = db.prepare("SELECT COUNT(*) AS c, AVG(rating) AS a FROM reviews WHERE course_id = ? AND status = 'visible'").get(id) as { c: number; a: number | null }
   return {
     ...row, outline: row.outline ? JSON.parse(row.outline as string) : [], projects,
     project_ids: (projects as { id: string }[]).map((p) => p.id),
     mentor_name: mentor?.display_name, org_name: org?.name ?? null,
+    review_count: rating.c,
+    rating_avg: rating.a == null ? null : Math.round(rating.a * 10) / 10,
   }
 }
 
@@ -67,7 +71,7 @@ export async function courseRoutes(app: FastifyInstance): Promise<void> {
   app.post('/courses', async (req, reply) => {
     const ctx = requireAuth(req)
     requirePerm(ctx, 'courses', 'write')
-    const b = (req.body ?? {}) as { name?: string; format?: string; audience?: string; outline?: string[]; sessions?: string; region?: string; project_ids?: string[]; price_yuan?: number }
+    const b = (req.body ?? {}) as { name?: string; format?: string; audience?: string; outline?: string[]; sessions?: string; region?: string; project_ids?: string[]; price_yuan?: number; price_note?: string }
     if (!b.name || !b.format) throw err.validation('缺少 name/format')
     if (!['offline', 'online'].includes(b.format)) throw err.validation('format 不合法')
     // F-2：价格（元，可空=免费课程）；金额一律以分存储
@@ -78,8 +82,8 @@ export async function courseRoutes(app: FastifyInstance): Promise<void> {
     }
     const id = newId('c_')
     db.prepare(
-      'INSERT INTO courses(id, name, mentor_account_id, org_id, format, audience, outline, sessions, region, price_cents, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
-    ).run(id, b.name, ctx.accountId, ctx.orgId ?? null, b.format, b.audience ?? null, JSON.stringify(b.outline ?? []), b.sessions ?? null, b.region ?? null, priceCents, 'draft', nowISO(), nowISO())
+      'INSERT INTO courses(id, name, mentor_account_id, org_id, format, audience, outline, sessions, region, price_cents, price_note, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+    ).run(id, b.name, ctx.accountId, ctx.orgId ?? null, b.format, b.audience ?? null, JSON.stringify(b.outline ?? []), b.sessions ?? null, b.region ?? null, priceCents, b.price_note ?? null, 'draft', nowISO(), nowISO())
     for (const pid of b.project_ids ?? []) {
       db.prepare('INSERT OR IGNORE INTO course_project_links(course_id, project_id) VALUES (?, ?)').run(id, pid)
     }
@@ -94,10 +98,11 @@ export async function courseRoutes(app: FastifyInstance): Promise<void> {
     if (!row) throw err.forbidden()
     if (!canManageCourse(ctx, row as unknown as { mentor_account_id: string; org_id: string | null })) throw err.forbidden()
     assertVersion(row as { version: number }, (req.body as { version?: number }).version)
-    const b = (req.body ?? {}) as { name?: string; audience?: string; outline?: string[]; sessions?: string; region?: string; price_yuan?: number | null; version?: number }
+    const b = (req.body ?? {}) as { name?: string; audience?: string; outline?: string[]; sessions?: string; region?: string; price_yuan?: number | null; price_note?: string | null; version?: number }
     const fields: Record<string, string | null> = {}
     for (const k of ['name', 'audience', 'sessions', 'region'] as const) if (b[k] !== undefined) fields[k] = String(b[k])
     if (b.outline !== undefined) fields.outline = JSON.stringify(b.outline)
+    if (b.price_note !== undefined) fields.price_note = b.price_note === null || b.price_note === '' ? null : String(b.price_note).slice(0, 100)
     // F-2：价格更新（元→分；null=设为免费）
     if (b.price_yuan !== undefined) {
       if (b.price_yuan === null) fields.price_cents = null
