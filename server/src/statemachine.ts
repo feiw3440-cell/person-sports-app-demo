@@ -64,6 +64,12 @@ export const FLOWS: Record<string, StateFlow> = {
   'content.submit_review': { resource: 'content', action: 'submit_review', from: ['draft', 'offline'], to: 'pending_review' },
   'content.publish': { resource: 'content', action: 'publish', from: ['pending_review'], to: 'published' },
   'content.offline': { resource: 'content', action: 'offline', from: ['published'], to: 'offline' },
+
+  // 订单（F-1，模拟支付）：created → paid → refund_requested → refunded；created → cancelled
+  'order.mock_pay': { resource: 'order', action: 'mock_pay', from: ['created'], to: 'paid' },
+  'order.request_refund': { resource: 'order', action: 'request_refund', from: ['paid'], to: 'refund_requested' },
+  'order.refund': { resource: 'order', action: 'refund', from: ['refund_requested'], to: 'refunded' },
+  'order.cancel': { resource: 'order', action: 'cancel', from: ['created'], to: 'cancelled' },
 }
 
 export interface ApplyResult {

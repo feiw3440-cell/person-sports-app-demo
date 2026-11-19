@@ -67,13 +67,19 @@ export async function courseRoutes(app: FastifyInstance): Promise<void> {
   app.post('/courses', async (req, reply) => {
     const ctx = requireAuth(req)
     requirePerm(ctx, 'courses', 'write')
-    const b = (req.body ?? {}) as { name?: string; format?: string; audience?: string; outline?: string[]; sessions?: string; region?: string; project_ids?: string[] }
+    const b = (req.body ?? {}) as { name?: string; format?: string; audience?: string; outline?: string[]; sessions?: string; region?: string; project_ids?: string[]; price_yuan?: number }
     if (!b.name || !b.format) throw err.validation('缺少 name/format')
     if (!['offline', 'online'].includes(b.format)) throw err.validation('format 不合法')
+    // F-2：价格（元，可空=免费课程）；金额一律以分存储
+    let priceCents: number | null = null
+    if (b.price_yuan !== undefined && b.price_yuan !== null) {
+      if (typeof b.price_yuan !== 'number' || b.price_yuan < 0 || b.price_yuan > 100000) throw err.validation('价格不合法（0-100000 元）')
+      priceCents = Math.round(b.price_yuan * 100)
+    }
     const id = newId('c_')
     db.prepare(
-      'INSERT INTO courses(id, name, mentor_account_id, org_id, format, audience, outline, sessions, region, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
-    ).run(id, b.name, ctx.accountId, ctx.orgId ?? null, b.format, b.audience ?? null, JSON.stringify(b.outline ?? []), b.sessions ?? null, b.region ?? null, 'draft', nowISO(), nowISO())
+      'INSERT INTO courses(id, name, mentor_account_id, org_id, format, audience, outline, sessions, region, price_cents, status, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+    ).run(id, b.name, ctx.accountId, ctx.orgId ?? null, b.format, b.audience ?? null, JSON.stringify(b.outline ?? []), b.sessions ?? null, b.region ?? null, priceCents, 'draft', nowISO(), nowISO())
     for (const pid of b.project_ids ?? []) {
       db.prepare('INSERT OR IGNORE INTO course_project_links(course_id, project_id) VALUES (?, ?)').run(id, pid)
     }
@@ -88,10 +94,18 @@ export async function courseRoutes(app: FastifyInstance): Promise<void> {
     if (!row) throw err.forbidden()
     if (!canManageCourse(ctx, row as unknown as { mentor_account_id: string; org_id: string | null })) throw err.forbidden()
     assertVersion(row as { version: number }, (req.body as { version?: number }).version)
-    const b = (req.body ?? {}) as { name?: string; audience?: string; outline?: string[]; sessions?: string; region?: string; version?: number }
+    const b = (req.body ?? {}) as { name?: string; audience?: string; outline?: string[]; sessions?: string; region?: string; price_yuan?: number | null; version?: number }
     const fields: Record<string, string | null> = {}
     for (const k of ['name', 'audience', 'sessions', 'region'] as const) if (b[k] !== undefined) fields[k] = String(b[k])
     if (b.outline !== undefined) fields.outline = JSON.stringify(b.outline)
+    // F-2：价格更新（元→分；null=设为免费）
+    if (b.price_yuan !== undefined) {
+      if (b.price_yuan === null) fields.price_cents = null
+      else {
+        if (typeof b.price_yuan !== 'number' || b.price_yuan < 0 || b.price_yuan > 100000) throw err.validation('价格不合法（0-100000 元）')
+        fields.price_cents = String(Math.round(b.price_yuan * 100))
+      }
+    }
     if (Object.keys(fields).length === 0) throw err.validation('无可更新字段')
     const sets = Object.keys(fields).map((k) => `${k} = @${k}`).join(', ')
     db.prepare(`UPDATE courses SET ${sets}, updated_at = @updated_at, version = version + 1 WHERE id = @id`).run({ ...fields, updated_at: nowISO(), id })

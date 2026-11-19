@@ -1,7 +1,7 @@
 // 教学与训练：课程库 / 发布与状态机动作 / 班级 / 报名审核（闭环 PC 侧）/ 考勤 / 训练计划
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { App, Button, Card, Descriptions, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd'
+import { App, Button, Card, Descriptions, Form, Input, InputNumber, Modal, Popconfirm, Select, Space, Table, Tag, Typography, message } from 'antd'
 import { PlusOutlined } from '@ant-design/icons'
 import { get, post } from '@/api/client'
 import { PageWrap, StatusTag, useFetch } from '@/components/common'
@@ -82,6 +82,9 @@ function CreateCourseModal({ open, onClose, onDone }: { open: boolean; onClose: 
         <Form.Item name="name" label="课程名" rules={[{ required: true }]}><Input /></Form.Item>
         <Form.Item name="format" label="形式" rules={[{ required: true }]} initialValue="offline">
           <Select options={[{ value: 'offline', label: '线下' }, { value: 'online', label: '线上' }]} />
+        </Form.Item>
+        <Form.Item name="price_yuan" label="价格（元）" extra="留空 = 免费课程（走报名审核流）；填写后用户需下单支付（模拟支付）">
+          <InputNumber min={0} max={100000} precision={2} style={{ width: '100%' }} placeholder="如 128.00" />
         </Form.Item>
         <Form.Item name="audience" label="适用对象"><Input /></Form.Item>
         <Form.Item name="project_ids" label="关联项目（多对多）">
