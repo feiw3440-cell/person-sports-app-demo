@@ -80,14 +80,19 @@ function summaryFor(ctx: AuthContext) {
     .get(...scope.args) as Record<string, number>
   const sScope = settlementScope(ctx, perm.data_scope)
   const settled = sScope
-    ? (db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(s.mentor_amount_cents),0) AS m FROM settlements s WHERE ${sScope.sql}`).get(...sScope.args) as { c: number; m: number })
+    ? (db.prepare(`SELECT COUNT(*) AS c, COALESCE(SUM(s.mentor_amount_cents),0) AS m FROM settlements s WHERE ${sScope.sql} AND s.status = 'settled'`).get(...sScope.args) as { c: number; m: number })
     : { c: 0, m: 0 }
+  // 待审批申请单（仅本人/本组织/平台范围内）
+  const pendingApps = sScope
+    ? (db.prepare(`SELECT COUNT(*) AS c FROM settlements s WHERE ${sScope.sql} AND s.status = 'pending'`).get(...sScope.args) as { c: number })
+    : { c: 0 }
   return {
     ...row,
     platform_income_cents: row.platform_gross_cents - row.platform_refund_cents,
     mentor_income_cents: row.mentor_gross_cents - row.mentor_refund_cents,
     settlement_count: settled.c,
     settlement_total_cents: settled.m,
+    pending_settlement_applications: pendingApps.c,
   }
 }
 
@@ -190,21 +195,30 @@ export async function revenueRoutes(app: FastifyInstance): Promise<void> {
     })
   })
 
-  /* 结算记录 */
+  /* 结算记录（含 pending 申请单 / settled 已批 / rejected 已驳回） */
   app.get('/revenue/settlements', async (req, reply) => {
     const ctx = requireAuth(req)
     const perm = requirePerm(ctx, 'revenue', 'read')
     const scope = settlementScope(ctx, perm.data_scope)
     if (!scope) return reply.send({ data: [], meta: { total: 0 } })
+    const q = req.query as { status?: string }
+    const where = [scope.sql]
+    const args = [...scope.args]
+    if (q.status) {
+      if (!['pending', 'settled', 'rejected'].includes(q.status)) throw err.validation('status 不合法')
+      where.push('s.status = ?'); args.push(q.status)
+    }
     const rows = db
       .prepare(
-        `SELECT s.*, m.display_name AS mentor_name, u.display_name AS settled_by_name, o.name AS org_name
+        `SELECT s.*, m.display_name AS mentor_name,
+                u.display_name AS settled_by_name, ab.display_name AS applied_by_name, o.name AS org_name
          FROM settlements s JOIN accounts m ON m.id = s.mentor_account_id
-         JOIN accounts u ON u.id = s.settled_by
+         LEFT JOIN accounts u ON u.id = s.settled_by
+         LEFT JOIN accounts ab ON ab.id = s.applied_by
          LEFT JOIN organizations o ON o.id = s.org_id
-         WHERE ${scope.sql} ORDER BY s.settled_at DESC`,
+         WHERE ${where.join(' AND ')} ORDER BY COALESCE(s.settled_at, s.applied_at, s.created_at) DESC`,
       )
-      .all(...scope.args)
+      .all(...args)
     return reply.send({ data: rows, meta: { total: rows.length } })
   })
 
@@ -214,9 +228,11 @@ export async function revenueRoutes(app: FastifyInstance): Promise<void> {
     const { id } = req.params as { id: string }
     const s = db
       .prepare(
-        `SELECT s.*, m.display_name AS mentor_name, u.display_name AS settled_by_name, o.name AS org_name
+        `SELECT s.*, m.display_name AS mentor_name,
+                u.display_name AS settled_by_name, ab.display_name AS applied_by_name, o.name AS org_name
          FROM settlements s JOIN accounts m ON m.id = s.mentor_account_id
-         JOIN accounts u ON u.id = s.settled_by
+         LEFT JOIN accounts u ON u.id = s.settled_by
+         LEFT JOIN accounts ab ON ab.id = s.applied_by
          LEFT JOIN organizations o ON o.id = s.org_id WHERE s.id = ?`,
       )
       .get(id) as Record<string, unknown> | undefined
@@ -239,7 +255,37 @@ export async function revenueRoutes(app: FastifyInstance): Promise<void> {
     return reply.send({ data: { ...s, items } })
   })
 
-  /* 模拟结算：服务端计算金额；订单唯一引用防重复；写入操作人与时间 */
+  /* ===== 结算申请/审批分离（P1-03）=====
+   * 申请（POST /revenue/settlements）：导师本人或组织/平台代为发起，生成 pending 单并预留订单（settlement_items）
+   * 审批（POST /revenue/settlements/:id/approve）：机构仅本组织、平台按授权；【申请人/导师本人不可审批】
+   * 驳回（POST /revenue/settlements/:id/reject）：释放预留订单，允许重新申请
+   * 状态机：pending → settled / rejected；settled / rejected 为终态，不可再审批
+   * 金额全部由服务端按订单快照计算；settlement_items.order_id UNIQUE 防重复；全程审计
+   */
+
+  /** 审批人公共校验：权限范围 + 自批自结阻断 + 状态机 */
+  function loadApprovable(ctx: AuthContext, id: string, permScope: string, action: string): Record<string, any> {
+    // 权限：导师/教练无 revenue.approve → 此处 requirePerm 直接 403（从权限表层面杜绝自批自结）
+    requirePerm(ctx, 'revenue', 'approve')
+    const s = db.prepare('SELECT * FROM settlements WHERE id = ?').get(id) as Record<string, any> | undefined
+    if (!s) throw err.notFound('结算申请单不存在')
+    if (s.status !== 'pending') throw err.state(`该申请单状态为 ${s.status}，仅 pending 可${action}`)
+    // 数据范围：机构仅本组织、平台按授权；self 无审批权限（防御性兜底）
+    if (permScope === 'platform' || permScope === 'all') {
+      // 平台全量
+    } else if (permScope === 'own_org') {
+      if (!ctx.orgId || s.org_id !== ctx.orgId) throw err.forbidden('该申请单不属于当前组织')
+    } else {
+      throw err.forbidden('当前身份无结算审批权限')
+    }
+    // 服务端强校验：申请人不可审批自己的申请；导师不可审批自结
+    if (s.applied_by === ctx.accountId || s.mentor_account_id === ctx.accountId) {
+      throw err.forbidden('不可审批本人发起或本人相关的结算申请（申请/审批必须分离）')
+    }
+    return s
+  }
+
+  /* 申请结算 */
   app.post('/revenue/settlements', async (req, reply) => {
     const ctx = requireAuth(req)
     const replay = idempotencyReplay(req, ctx.accountId)
@@ -253,18 +299,19 @@ export async function revenueRoutes(app: FastifyInstance): Promise<void> {
     let mentorId: string
     let orgFilter: string | null = null
     if (perm.data_scope === 'platform' || perm.data_scope === 'all') {
-      if (!b.mentor_account_id) throw err.validation('平台结算须指定 mentor_account_id')
+      if (!b.mentor_account_id) throw err.validation('平台申请须指定 mentor_account_id')
       mentorId = b.mentor_account_id
     } else if (perm.data_scope === 'own_org') {
       if (!ctx.orgId) throw err.forbidden('缺少组织上下文')
-      if (!b.mentor_account_id) throw err.validation('组织结算须指定 mentor_account_id')
+      if (!b.mentor_account_id) throw err.validation('组织申请须指定 mentor_account_id')
       orgFilter = ctx.orgId
       const inOrg = db.prepare('SELECT 1 FROM courses WHERE mentor_account_id = ? AND org_id = ? LIMIT 1').get(b.mentor_account_id, ctx.orgId)
       if (!inOrg) throw err.forbidden('该导师不属于当前组织')
       mentorId = b.mentor_account_id
     } else {
+      // 导师/教练：只能为本人发起申请；审批由机构或平台完成
       mentorId = ctx.accountId
-      if (b.mentor_account_id && b.mentor_account_id !== ctx.accountId) throw err.forbidden('只能结算本人收入')
+      if (b.mentor_account_id && b.mentor_account_id !== ctx.accountId) throw err.forbidden('只能为本人发起结算申请')
     }
     const mentor = db.prepare("SELECT id, display_name FROM accounts WHERE id = ? AND status = 'active'").get(mentorId) as { id: string; display_name: string } | undefined
     if (!mentor) throw err.forbidden('导师账号不存在或不可用')
@@ -283,7 +330,7 @@ export async function revenueRoutes(app: FastifyInstance): Promise<void> {
          WHERE ${where.join(' AND ')} ORDER BY o.paid_at ASC`,
       )
       .all(...args) as { id: string; amount_cents: number; platform_fee_cents: number; mentor_amount_cents: number; paid_at: string | null; course_id: string; org_id: string | null }[]
-    if (orders.length === 0) throw err.state('当前没有可结算的已支付订单（已结算/未支付/已退款订单不参与结算）')
+    if (orders.length === 0) throw err.state('当前没有可申请的已支付订单（已结算/未支付/已退款/审批中订单不参与申请）')
 
     const gross = orders.reduce((n, o) => n + o.amount_cents, 0)
     const fee = orders.reduce((n, o) => n + o.platform_fee_cents, 0)
@@ -296,9 +343,9 @@ export async function revenueRoutes(app: FastifyInstance): Promise<void> {
     const tx = db.transaction(() => {
       db.prepare(
         `INSERT INTO settlements(id, settlement_no, mentor_account_id, org_id, gross_amount_cents, platform_fee_cents,
-                                 mentor_amount_cents, order_count, status, period_start, period_end, settled_by, settled_at,
-                                 created_at, updated_at, version)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'settled', ?, ?, ?, ?, ?, ?, 1)`,
+                                 mentor_amount_cents, order_count, status, period_start, period_end,
+                                 applied_by, applied_at, settled_by, settled_at, reject_reason, created_at, updated_at, version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, 1)`,
       ).run(sid, settlementNo, mentorId, settlementOrg, gross, fee, mentorAmount, orders.length, start, end, ctx.accountId, now, now, now)
       for (const o of orders) {
         db.prepare(
@@ -310,17 +357,17 @@ export async function revenueRoutes(app: FastifyInstance): Promise<void> {
     try {
       tx()
     } catch (e) {
-      if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw err.conflict('SETTLEMENT_CONFLICT', '订单已被其他结算单引用，请刷新后重试')
+      if ((e as { code?: string }).code === 'SQLITE_CONSTRAINT_UNIQUE') throw err.conflict('SETTLEMENT_CONFLICT', '订单已被其他结算申请引用，请刷新后重试')
       throw e
     }
     audit(ctx, {
-      action: 'settlement.create', resourceType: 'settlement', resourceId: sid,
-      after: { settlement_no: settlementNo, mentor_account_id: mentorId, order_count: orders.length, mentor_amount_cents: mentorAmount, simulated: true },
+      action: 'settlement.apply', resourceType: 'settlement', resourceId: sid,
+      after: { settlement_no: settlementNo, mentor_account_id: mentorId, order_count: orders.length, mentor_amount_cents: mentorAmount, applied_by: ctx.accountId, simulated: true },
     })
     if (mentorId !== ctx.accountId) {
       enqueueNotify({
         targetAccountId: mentorId, category: 'biz', kind: 'order',
-        title: '收入已模拟结算', body: `${orders.length} 笔订单已结算，导师收入 ¥${(mentorAmount / 100).toFixed(2)}（模拟，无真实资金划转）`,
+        title: '收入结算申请已提交', body: `${orders.length} 笔订单已提交结算申请，导师收入 ¥${(mentorAmount / 100).toFixed(2)}，待机构/平台审批。`,
         bizRefType: 'settlement', bizRefId: sid,
       })
       pumpOutbox()
@@ -329,11 +376,90 @@ export async function revenueRoutes(app: FastifyInstance): Promise<void> {
       data: {
         id: sid, settlement_no: settlementNo, mentor_account_id: mentorId, mentor_name: mentor.display_name,
         org_id: settlementOrg, gross_amount_cents: gross, platform_fee_cents: fee, mentor_amount_cents: mentorAmount,
-        order_count: orders.length, status: 'settled', settled_at: now, simulated: true,
+        order_count: orders.length, status: 'pending', applied_by: ctx.accountId, applied_at: now, simulated: true,
       },
     }
     idempotencySave(req, ctx.accountId, 201, body)
     reply.code(201)
+    return reply.send(body)
+  })
+
+  /* 审批通过：pending → settled（申请人/导师本人不可审批） */
+  app.post('/revenue/settlements/:id/approve', async (req, reply) => {
+    const ctx = requireAuth(req)
+    const replay = idempotencyReplay(req, ctx.accountId)
+    if (replay) {
+      reply.header('Idempotency-Replayed', 'true')
+      reply.code(replay.status)
+      return replay.body
+    }
+    const perm = requirePerm(ctx, 'revenue', 'approve')
+    const { id } = req.params as { id: string }
+    const s = loadApprovable(ctx, id, perm.data_scope, '审批')
+    // 审批前复核：申请单内订单仍须为 paid（若期间发生退款，需驳回后重新申请）
+    const bad = (db.prepare(
+      `SELECT COUNT(*) AS c FROM settlement_items si JOIN orders o ON o.id = si.order_id
+       WHERE si.settlement_id = ? AND o.status <> 'paid'`,
+    ).get(id) as { c: number }).c
+    if (bad > 0) throw err.state('该申请单包含状态已变化的订单（如退款），请驳回后重新申请')
+    const now = nowISO()
+    const before = { status: s.status, settled_by: s.settled_by, settled_at: s.settled_at }
+    db.prepare(
+      `UPDATE settlements SET status = 'settled', settled_by = ?, settled_at = ?, updated_at = ?, version = version + 1 WHERE id = ? AND status = 'pending'`,
+    ).run(ctx.accountId, now, now, id)
+    audit(ctx, {
+      action: 'settlement.approve', resourceType: 'settlement', resourceId: id,
+      before, after: { status: 'settled', settled_by: ctx.accountId, settled_at: now, applied_by: s.applied_by },
+    })
+    enqueueNotify({
+      targetAccountId: s.mentor_account_id, category: 'biz', kind: 'order',
+      title: '收入结算已审批', body: `结算单 ${s.settlement_no} 已审批通过，导师收入 ¥${(s.mentor_amount_cents / 100).toFixed(2)}（模拟，无真实资金划转）。`,
+      bizRefType: 'settlement', bizRefId: id,
+    })
+    pumpOutbox()
+    const body = { data: { id, status: 'settled', settled_by: ctx.accountId, settled_at: now, simulated: true } }
+    idempotencySave(req, ctx.accountId, 200, body)
+    return reply.send(body)
+  })
+
+  /* 驳回：pending → rejected，释放预留订单（允许重新申请） */
+  app.post('/revenue/settlements/:id/reject', async (req, reply) => {
+    const ctx = requireAuth(req)
+    const replay = idempotencyReplay(req, ctx.accountId)
+    if (replay) {
+      reply.header('Idempotency-Replayed', 'true')
+      reply.code(replay.status)
+      return replay.body
+    }
+    const perm = requirePerm(ctx, 'revenue', 'approve')
+    const { id } = req.params as { id: string }
+    const s = loadApprovable(ctx, id, perm.data_scope, '驳回')
+    const b = (req.body ?? {}) as { reason?: string }
+    const reason = String(b.reason ?? '').trim()
+    if (!reason) throw err.validation('驳回须填写原因')
+    const now = nowISO()
+    const before = { status: s.status, order_count: s.order_count }
+    const tx = db.transaction(() => {
+      db.prepare(
+        `UPDATE settlements SET status = 'rejected', settled_by = ?, settled_at = ?, reject_reason = ?, updated_at = ?, version = version + 1 WHERE id = ? AND status = 'pending'`,
+      ).run(ctx.accountId, now, reason, now, id)
+      // 释放预留订单：删除本单的 settlement_items（订单重新进入可申请池）
+      db.prepare('DELETE FROM settlement_items WHERE settlement_id = ?').run(id)
+    })
+    tx()
+    audit(ctx, {
+      action: 'settlement.reject', resourceType: 'settlement', resourceId: id,
+      before, after: { status: 'rejected', settled_by: ctx.accountId, reject_reason: reason },
+      reason,
+    })
+    enqueueNotify({
+      targetAccountId: s.mentor_account_id, category: 'biz', kind: 'order',
+      title: '收入结算申请被驳回', body: `结算单 ${s.settlement_no} 被驳回：${reason}`,
+      bizRefType: 'settlement', bizRefId: id,
+    })
+    pumpOutbox()
+    const body = { data: { id, status: 'rejected', settled_by: ctx.accountId, reject_reason: reason, settled_at: now } }
+    idempotencySave(req, ctx.accountId, 200, body)
     return reply.send(body)
   })
 

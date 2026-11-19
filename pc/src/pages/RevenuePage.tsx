@@ -1,5 +1,6 @@
-// 商业化 / 收入与结算（F-4）：概览、收入明细、待结算、模拟结算、结算记录
+// 商业化 / 收入与结算（F-4）：概览、收入明细、待结算、结算申请/审批分离、结算记录
 // 所有金额由服务端按订单快照计算；前端仅格式化展示，不参与金额计算。
+// P1-03：导师申请（pending）→ 机构/平台审批（settled）/驳回（rejected）；本人不可审批自结。
 import { useState } from 'react'
 import { App, Button, Card, Col, Descriptions, Drawer, Input, InputNumber, Modal, Row, Select, Space, Statistic, Table, Tabs, Tag, Typography } from 'antd'
 import { get, getRaw, newIdempotencyKey, patch, post } from '@/api/client'
@@ -12,6 +13,11 @@ const STATUS_LABEL: Record<string, { text: string; color: string }> = {
   paid: { text: '已支付', color: 'green' },
   refund_requested: { text: '退款申请中', color: 'orange' },
   refunded: { text: '已退款', color: 'red' },
+}
+const SETTLE_STATUS: Record<string, { text: string; color: string }> = {
+  pending: { text: '待审批', color: 'orange' },
+  settled: { text: '已结算（模拟）', color: 'green' },
+  rejected: { text: '已驳回', color: 'red' },
 }
 
 export default function RevenuePage() {
@@ -26,6 +32,8 @@ export default function RevenuePage() {
   const [detail, setDetail] = useState<any | null>(null)
   const [feeOpen, setFeeOpen] = useState(false)
   const [feePercent, setFeePercent] = useState(10)
+  const [rejectFor, setRejectFor] = useState<any | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
   const identities = (me?.identities ?? []) as { identity_type: string }[]
   const isPlatformAdmin = identities.some((i) => i.identity_type === 'platform_admin')
 
@@ -34,6 +42,7 @@ export default function RevenuePage() {
   const pending = useFetch(() => getRaw('/revenue/pending'), [])
   const settlements = useFetch(() => getRaw('/revenue/settlements'), [])
   const canSettle = hasPerm('revenue.settle')
+  const canApprove = hasPerm('revenue.approve')
 
   const s = (summary.data ?? {}) as any
   const pendingData = (pending.data ?? {}) as any
@@ -45,7 +54,7 @@ export default function RevenuePage() {
     summary.reload(); orders.reload(); pending.reload(); settlements.reload()
   }
 
-  const doSettle = async () => {
+  const doApply = async () => {
     const target = mentorId ?? (mentors.length === 1 ? mentors[0].mentor_account_id : undefined)
     if (!target) { message.error('请选择要结算的导师'); return }
     setSaving(true)
@@ -55,8 +64,29 @@ export default function RevenuePage() {
         period_start: periodStart || undefined,
         period_end: periodEnd || undefined,
       }, newIdempotencyKey())
-      message.success(`已生成结算单 ${res.settlement_no}（模拟，无真实资金划转）`)
+      const no = (res as any)?.settlement_no ?? (res as any)?.data?.settlement_no ?? ''
+      message.success(`已提交结算申请 ${no}，待机构/平台审批（模拟，无真实资金划转）`)
       setSettleOpen(false); setMentorId(undefined); setPeriodStart(''); setPeriodEnd('')
+      reloadAll()
+    } catch (e) { message.error((e as Error).message) } finally { setSaving(false) }
+  }
+
+  const doApprove = async (row: any) => {
+    setSaving(true)
+    try {
+      await post(`/revenue/settlements/${row.id}/approve`, {}, newIdempotencyKey())
+      message.success(`结算单 ${row.settlement_no} 已审批通过`)
+      reloadAll()
+    } catch (e) { message.error((e as Error).message) } finally { setSaving(false) }
+  }
+
+  const doReject = async () => {
+    if (!rejectReason.trim()) { message.error('请填写驳回原因'); return }
+    setSaving(true)
+    try {
+      await post(`/revenue/settlements/${rejectFor.id}/reject`, { reason: rejectReason.trim() }, newIdempotencyKey())
+      message.success(`结算单 ${rejectFor.settlement_no} 已驳回，订单已释放可重新申请`)
+      setRejectFor(null); setRejectReason('')
       reloadAll()
     } catch (e) { message.error((e as Error).message) } finally { setSaving(false) }
   }
@@ -148,7 +178,7 @@ export default function RevenuePage() {
       children: (
         <>
           <Card size="small" title="待结算导师汇总" extra={
-            canSettle ? <Button type="primary" onClick={() => setSettleOpen(true)} disabled={mentors.length === 0}>模拟结算</Button> : <Typography.Text type="secondary">无结算权限</Typography.Text>
+            canSettle ? <Button type="primary" onClick={() => setSettleOpen(true)} disabled={mentors.length === 0}>申请结算</Button> : <Typography.Text type="secondary">无申请权限</Typography.Text>
           }>
             <Table
               rowKey="mentor_account_id" size="small" dataSource={mentors} loading={pending.loading} pagination={false}
@@ -189,9 +219,23 @@ export default function RevenuePage() {
             { title: '成交总额', dataIndex: 'gross_amount_cents', width: 120, render: fmt },
             { title: '平台费', dataIndex: 'platform_fee_cents', width: 110, render: fmt },
             { title: '导师结算', dataIndex: 'mentor_amount_cents', width: 120, render: fmt },
-            { title: '状态', dataIndex: 'status', width: 100, render: (v: string) => <Tag color="green">{v === 'settled' ? '已结算（模拟）' : v}</Tag> },
-            { title: '操作人', dataIndex: 'settled_by_name', width: 130 },
-            { title: '结算时间', dataIndex: 'settled_at', width: 160, render: (v: string) => v?.slice(0, 16).replace('T', ' ') },
+            { title: '状态', dataIndex: 'status', width: 110, render: (v: string) => <Tag color={SETTLE_STATUS[v]?.color}>{SETTLE_STATUS[v]?.text ?? v}</Tag> },
+            { title: '申请人', dataIndex: 'applied_by_name', width: 130, render: (v: string) => v || '（历史）' },
+            { title: '审批人', dataIndex: 'settled_by_name', width: 130 },
+            { title: '申请/结算时间', width: 160, render: (_: unknown, r: any) => String(r.settled_at ?? r.applied_at ?? '').slice(0, 16).replace('T', ' ') },
+            {
+              title: '审批操作', key: 'action', width: 170,
+              render: (_: unknown, r: any) => {
+                if (r.status !== 'pending') return '-'
+                if (!canApprove) return <Typography.Text type="secondary">无审批权限</Typography.Text>
+                return (
+                  <Space size={4}>
+                    <Button size="small" type="primary" onClick={() => doApprove(r)}>通过</Button>
+                    <Button size="small" danger onClick={() => setRejectFor(r)}>驳回</Button>
+                  </Space>
+                )
+              },
+            },
           ]}
         />
       ),
@@ -208,7 +252,7 @@ export default function RevenuePage() {
         </Typography.Text>
       </Card>
 
-      <Modal title="模拟结算" open={settleOpen} confirmLoading={saving} onOk={doSettle} onCancel={() => setSettleOpen(false)} destroyOnClose>
+      <Modal title="申请结算（提交后待机构/平台审批）" open={settleOpen} confirmLoading={saving} onOk={doApply} onCancel={() => setSettleOpen(false)} destroyOnClose>
         <Space direction="vertical" style={{ width: '100%' }}>
           <div>
             <div style={{ marginBottom: 6 }}>导师（待结算）</div>
@@ -226,8 +270,15 @@ export default function RevenuePage() {
             </Space>
           </div>
           <Typography.Text type="secondary">
-            服务端将重新计算可结算订单与金额；已结算订单不会重复结算。模拟结算只生成本地结算记录。
+            服务端将重新计算可结算订单与金额；已结算/审批中订单不会重复申请。提交后生成待审批申请，机构（本组织）或平台审批通过后才结算；申请人/导师本人不可审批。模拟结算不触发真实资金划转。
           </Typography.Text>
+        </Space>
+      </Modal>
+
+      <Modal title="驳结算申请" open={!!rejectFor} confirmLoading={saving} onOk={doReject} onCancel={() => { setRejectFor(null); setRejectReason('') }} destroyOnClose>
+        <Space direction="vertical" style={{ width: '100%' }}>
+          <Typography.Text>驳回结算单 {rejectFor?.settlement_no} 后，其预留订单将释放，导师可重新发起申请。</Typography.Text>
+          <Input.TextArea rows={3} placeholder="请填写驳回原因（留痕，必填）" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
         </Space>
       </Modal>
 
@@ -254,9 +305,12 @@ export default function RevenuePage() {
               <Descriptions.Item label="平台服务费">{fmt(detail.platform_fee_cents)}</Descriptions.Item>
               <Descriptions.Item label="导师结算">{fmt(detail.mentor_amount_cents)}</Descriptions.Item>
               <Descriptions.Item label="订单数">{detail.order_count}</Descriptions.Item>
-              <Descriptions.Item label="操作人">{detail.settled_by_name}</Descriptions.Item>
-              <Descriptions.Item label="结算时间">{String(detail.settled_at).slice(0, 19).replace('T', ' ')}</Descriptions.Item>
-              <Descriptions.Item label="状态" span={2}><Tag color="green">已结算（模拟）</Tag></Descriptions.Item>
+              <Descriptions.Item label="申请人">{detail.applied_by_name || '（历史）'}</Descriptions.Item>
+              <Descriptions.Item label="审批人">{detail.settled_by_name || '-'}</Descriptions.Item>
+              <Descriptions.Item label="申请时间">{String(detail.applied_at ?? '').slice(0, 19).replace('T', ' ')}</Descriptions.Item>
+              <Descriptions.Item label="结算时间">{String(detail.settled_at ?? '').slice(0, 19).replace('T', ' ')}</Descriptions.Item>
+              <Descriptions.Item label="状态" span={2}><Tag color={SETTLE_STATUS[detail.status]?.color}>{SETTLE_STATUS[detail.status]?.text ?? detail.status}</Tag></Descriptions.Item>
+              {detail.reject_reason && <Descriptions.Item label="驳回原因" span={2}>{detail.reject_reason}</Descriptions.Item>}
             </Descriptions>
             <Table
               size="small" rowKey="id" pagination={false} dataSource={detail.items ?? []}
