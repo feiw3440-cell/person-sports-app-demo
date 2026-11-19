@@ -2,7 +2,7 @@
 // 金额全部来自服务端订单快照（整数分），前端仅做展示格式化。
 import { useState } from 'react'
 import { App, Button, Card, Descriptions, Drawer, Form, Input, Select, Space, Table, Tag, Typography } from 'antd'
-import { get, getRaw, post } from '@/api/client'
+import { getRaw, post } from '@/api/client'
 import { PageWrap, StatusTag, useFetch } from '@/components/common'
 import { hasPerm } from '@/store/auth'
 
@@ -12,6 +12,16 @@ const ORDER_STATUS: Record<string, { label: string; color: string }> = {
   refund_requested: { label: '退款申请中', color: 'orange' },
   refunded: { label: '已退款', color: 'red' },
   cancelled: { label: '已取消', color: 'default' },
+}
+
+/** 资金流水类型标签（含退款拆分冲减类型，兼容 history 数据与新增分录） */
+const ENTRY_TYPE: Record<string, { label: string }> = {
+  payment: { label: '支付收款' },
+  platform_fee: { label: '平台服务费' },
+  mentor_income: { label: '导师收入' },
+  refund: { label: '退款（全额）' },
+  platform_fee_refund: { label: '平台费冲减' },
+  mentor_income_refund: { label: '导师收入冲减' },
 }
 
 export function yuan(cents: number | null | undefined): string {
@@ -37,12 +47,15 @@ export default function OrdersPage() {
 
   const openLedger = async (row: any) => {
     setLedgerFor(row)
+    // null=加载中 / []=（真正）空流水或接口失败；二者由 loading 与 emptyText 区分，不混淆
     setLedger(null)
     try {
-      const d = await get(`/orders/${row.id}/ledger`)
-      setLedger(d.data ?? [])
+      // 服务端返回 { data: LedgerRow[], meta: { total } }；client.get() 会解包一层 data，
+      // 若用 get() 再取 .data 得到 undefined → 始终空表。这里用 getRaw 保留完整响应后显式取 data。
+      const res = await getRaw<{ data?: unknown; meta?: { total?: number } }>(`/orders/${row.id}/ledger`)
+      setLedger(Array.isArray(res?.data) ? (res.data as any[]) : [])
     } catch (e) {
-      message.error((e as Error).message)
+      message.error(`读取订单流水失败：${(e as Error).message}`)
       setLedger([])
     }
   }
@@ -133,15 +146,17 @@ export default function OrdersPage() {
             <Table
               size="small" rowKey="id" pagination={false} loading={ledger === null}
               dataSource={ledger ?? []}
+              locale={{ emptyText: ledger === null ? '加载中…' : '该订单暂无资金流水' }}
               columns={[
-                { title: '类型', dataIndex: 'entry_type' },
+                { title: '类型', dataIndex: 'entry_type', width: 130, render: (v: string) => ENTRY_TYPE[v]?.label ?? v },
                 { title: '金额', dataIndex: 'amount_cents', width: 110, render: yuan },
-                { title: '备注', dataIndex: 'memo' },
+                { title: '关联订单', width: 170, render: () => ledgerFor?.order_no ?? '-' },
+                { title: '说明 / 操作记录', dataIndex: 'memo' },
                 { title: '时间', dataIndex: 'created_at', width: 150, render: (v: string) => v?.slice(0, 16).replace('T', ' ') },
               ]}
             />
             <Typography.Text type="secondary" style={{ display: 'block', marginTop: 12 }}>
-              流水为追加式账本（payment / platform_fee / mentor_income / refund），不可修改。
+              流水为追加式账本（支付收款 / 平台服务费 / 导师收入 / 退款及冲减），不可修改；每笔操作均留痕。
             </Typography.Text>
           </>
         )}
